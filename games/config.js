@@ -29,6 +29,11 @@ window.adventConfig = {
     title: "Zdobení perníčků",
     order: "desc",
     unit: " %"
+  },
+  7: {
+    title: "Šplhání po stromečku",
+    order: "asc",
+    unit: "s"
   }
 
 };
