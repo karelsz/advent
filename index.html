@@ -49,6 +49,85 @@
       margin-bottom: 4px;
     }
 
+/* 4 adventní svíčky v záhlaví */
+    .header-candles {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 6px;
+      padding: 6px 12px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 20px;
+      display: inline-flex;
+    }
+
+    .header-candle {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 1.3rem;
+      transition: all 0.3s ease;
+      opacity: 0.35;
+      filter: grayscale(1);
+    }
+
+    .header-candle.lit {
+      opacity: 1;
+      filter: grayscale(0) drop-shadow(0 0 8px rgba(255, 212, 59, 0.8));
+      transform: scale(1.1);
+    }
+
+    .header-candle .candle-flame {
+      font-size: 0.85rem;
+      height: 14px;
+      visibility: hidden;
+    }
+
+    .header-candle.lit .candle-flame {
+      visibility: visible;
+      animation: flicker 1.2s infinite alternate ease-in-out;
+    }
+
+    @keyframes flicker {
+      0% { transform: scale(0.9) rotate(-3deg); filter: drop-shadow(0 0 4px #f59e0b); }
+      100% { transform: scale(1.15) rotate(3deg); filter: drop-shadow(0 0 10px #fbbf24); }
+    }
+
+    .bar-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn-bar {
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Modální okno pro Adventní věnec */
+    .wreath-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 10px 4px;
+      width: 100%;
+    }
+
+    .wreath-desc {
+      font-size: 0.95rem;
+      color: #cbd5e1;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+
     .player-bar {
       display: flex;
       justify-content: space-between;
@@ -287,10 +366,24 @@
 
   <header>
     <h1>🎄 Adventní kalendář</h1>
+      
+    <!-- 4 svíčky pod nadpisem -->
+    <div class="header-candles" id="headerCandles" title="4 adventní svíčky">
+      <div class="header-candle" id="hc-1"><span class="candle-flame">🔥</span><span>🕯️</span></div>
+      <div class="header-candle" id="hc-2"><span class="candle-flame">🔥</span><span>🕯️</span></div>
+      <div class="header-candle" id="hc-3"><span class="candle-flame">🔥</span><span>🕯️</span></div>
+      <div class="header-candle" id="hc-4"><span class="candle-flame">🔥</span><span>🕯️</span></div>
+    </div>
+
     <div class="player-bar">
       <div>Hráč: <span class="player-tag" id="playerNameTag" onclick="changePlayerName()">...</span></div>
-      <button class="btn-stats" id="btnStats">🏆 Rekordy</button>
+      <div class="bar-actions">
+        <!-- Nové tlačítko pro vyvolání věnce -->
+        <button class="btn-bar" id="btnWreath">🕯️ Věnec</button>
+        <button class="btn-bar" id="btnStats">🏆 Rekordy</button>
+      </div>
     </div>
+
   </header>
 
   <main class="calendar-grid" id="calendar"></main>
@@ -330,28 +423,83 @@
     </div>
   </div>
 
+<!-- Modální okno: Adventní věnec -->
+  <div class="modal-overlay" id="wreathModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="wreathModalTitle">🎄 Adventní věnec</h2>
+        <button class="btn-close" id="closeWreathBtn">✕</button>
+      </div>
+      <div class="wreath-container">
+        <canvas id="wreathCanvas" width="260" height="260"></canvas>
+        <div class="wreath-desc" id="wreathDesc"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // 1. Supabase konfigurace
     const SUPABASE_URL = 'https://vzayvjzvugrwvfifznnd.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6YXl2anp2dWdyd3ZmaWZ6bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4OTQ0NDcsImV4cCI6MjEwODQ3MDQ0N30.ZzLPVCPGyuWG3-sH1WIC4H3ZniV3JeZT2K9VuYLhmGg';
     const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-    // 2. Správa hráče
+ // 2. Správa hráče se Supabase ověřením existence
     let playerName = localStorage.getItem('advent_player') || '';
-    if (!playerName) {
-      playerName = prompt('Jak se jmenuješ? (Jméno do tabulky rekordů)', 'Ježíšek') || 'Hráč';
-      localStorage.setItem('advent_player', playerName.trim());
-    }
-    document.getElementById('playerNameTag').innerText = playerName;
 
-    function changePlayerName() {
-      const newName = prompt('Změnit jméno hráče:', playerName);
-      if (newName && newName.trim()) {
-        playerName = newName.trim();
+    async function checkPlayerExistsOnline(name) {
+      if (!supabaseClient) return false;
+      try {
+        const { data, error } = await supabaseClient
+          .from('leaderboard')
+          .select('player_name')
+          .ilike('player_name', name.trim())
+          .limit(1);
+        return !error && data && data.length > 0;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function promptAndSetPlayerName(isChange = false) {
+      let valid = false;
+      while (!valid) {
+        const promptMsg = isChange ? 'Zadat nové jméno hráče:' : 'Vítej v kalendáři! Jak se jmenuješ?';
+        const entered = prompt(promptMsg, playerName || 'Hráč');
+
+        if (!entered || !entered.trim()) {
+          if (!playerName) playerName = 'Hráč';
+          valid = true;
+          break;
+        }
+
+        const trimmed = entered.trim();
+        const exists = await checkPlayerExistsOnline(trimmed);
+
+        if (exists && trimmed.toLowerCase() !== playerName.toLowerCase()) {
+          const confirmSamePlayer = confirm(
+            `Jméno "${trimmed}" už v kalendáři existuje!\n\nJsi to opravdu ty a chceš pokračovat ve svém postupu?\n(OK = Ano, jsem to já / Zrušit = Zadat jiné jméno)`
+          );
+          if (!confirmSamePlayer) {
+            continue; // Uživatel nechce toto jméno, zkusí jiné
+          }
+        }
+
+        playerName = trimmed;
         localStorage.setItem('advent_player', playerName);
         document.getElementById('playerNameTag').innerText = playerName;
-        renderCalendar(); // <-- TENTO ŘÁDEK SEM PŘIDEJ
+        valid = true;
       }
+      renderCalendar();
+    }
+
+    function changePlayerName() {
+      promptAndSetPlayerName(true);
+    }
+
+    if (!playerName) {
+      promptAndSetPlayerName(false);
+    } else {
+      document.getElementById('playerNameTag').innerText = playerName;
     }
 
     // 3. Univerzální rekordový engine řízený games/config.js
@@ -417,6 +565,109 @@
       }
     };
 
+// Výpočet počtu svíček podle splněných dnů (1, 6, 13, 20)
+    function getLitCandlesCount() {
+      let count = 0;
+      if (completedDays.includes(1)) count++;  // 1. hra
+      if (completedDays.includes(6)) count++;  // 2. adventní neděle
+      if (completedDays.includes(13)) count++; // 3. adventní neděle
+      if (completedDays.includes(20)) count++; // 4. adventní neděle
+      return count;
+    }
+
+    // Aktualizace stavu svíček v záhlaví
+    function updateHeaderCandles() {
+      const count = getLitCandlesCount();
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`hc-${i}`);
+        if (el) {
+          if (i <= count) el.classList.add('lit');
+          else el.classList.remove('lit');
+        }
+      }
+    }
+
+    // Vykreslení věnce na canvas (chvojí, mašle a svíčky)
+    function drawWreath(canvasEl, litCount) {
+      const ctx = canvasEl.getContext('2d');
+      const w = canvasEl.width;
+      const h = canvasEl.height;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#061325';
+      ctx.fillRect(0, 0, w, h);
+
+      // Chvojí
+      const ringRadius = 78;
+      for (let i = 0; i < 36; i++) {
+        const angle = (i / 36) * Math.PI * 2;
+        const bx = cx + Math.cos(angle) * ringRadius;
+        const by = cy + Math.sin(angle) * ringRadius;
+        ctx.fillStyle = i % 2 === 0 ? '#15803d' : '#166534';
+        ctx.beginPath();
+        ctx.arc(bx, by, 22, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = '#061325';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 48, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4 svíčky na věnci
+      const candlePositions = [
+        { x: cx, y: cy - ringRadius },
+        { x: cx + ringRadius, y: cy },
+        { x: cx, y: cy + ringRadius },
+        { x: cx - ringRadius, y: cy }
+      ];
+
+      candlePositions.forEach((pos, idx) => {
+        const isLit = (idx + 1) <= litCount;
+        ctx.fillStyle = isLit ? '#991b1b' : '#334155';
+        ctx.beginPath();
+        ctx.roundRect(pos.x - 9, pos.y - 12, 18, 28, 4);
+        ctx.fill();
+
+        // Plamínek a záře pokud hoří
+        if (isLit) {
+          const glow = ctx.createRadialGradient(pos.x, pos.y - 25, 2, pos.x, pos.y - 25, 28);
+          glow.addColorStop(0, 'rgba(251, 191, 36, 0.7)');
+          glow.addColorStop(1, 'transparent');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y - 25, 28, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#f97316';
+          ctx.beginPath();
+          ctx.ellipse(pos.x, pos.y - 24, 5, 10, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+    }
+
+    // Otevření okna věnce s příslušným popisem
+    function showWreathModal(customTitle = null) {
+      const lit = getLitCandlesCount();
+      wreathModalTitle.innerText = customTitle || "🎄 Adventní věnec";
+      let descText = "";
+      if (lit === 0) descText = "Žádná svíčka ještě nehoří. Splň <strong>1. den</strong>!";
+      else if (lit === 1) descText = "✨ <strong>1. svíčka (Naděje)</strong> hoří! Další se rozzáří po <strong>6. dni</strong>.";
+      else if (lit === 2) descText = "✨✨ <strong>2 svíčky (Mír)</strong> hoří! Třetí se rozzáří po <strong>13. dni</strong>.";
+      else if (lit === 3) descText = "✨✨✨ <strong>3 svíčky (Přátelství)</strong> hoří! Poslední po <strong>20. dni</strong>.";
+      else descText = "🌟🌟🌟🌟 <strong>Všechny 4 svíčky hoří!</strong>";
+
+      wreathDesc.innerHTML = descText;
+      drawWreath(wreathCanvas, lit);
+      wreathModal.classList.add('active');
+    }
+
+    btnWreath.addEventListener('click', () => showWreathModal());
+    closeWreathBtn.addEventListener('click', () => wreathModal.classList.remove('active'));
+    
     // 4. Mřížka kalendáře
     const TOTAL_DAYS = 24;
     const completedDays = JSON.parse(localStorage.getItem('advent_completed') || '[]');
@@ -437,8 +688,9 @@
     const startGameBtn = document.getElementById('startGameBtn');
 
 async function renderCalendar() {
-      // 1. Zjistíme, u kterých dní drží aktuální hráč globální rekord
       const championDays = new Set();
+      const serverCompletedDays = new Set();
+
       if (supabaseClient) {
         try {
           const { data } = await supabaseClient
@@ -450,31 +702,47 @@ async function renderCalendar() {
             activeDays.forEach(d => {
               const asc = window.adventScores.isAscending(d);
               const dayScores = data.filter(item => item.day_number === d);
+
               if (dayScores.length > 0) {
+                // Seřazení pro určení 1. místa
                 dayScores.sort((a, b) => asc ? a.score - b.score : b.score - a.score);
-                // Pokud je na 1. místě aktuální hráč
                 if (dayScores[0].player_name.trim().toLowerCase() === playerName.trim().toLowerCase()) {
                   championDays.add(d);
                 }
               }
+
+              // Zkontrolujeme, zda tento hráč už den někdy odehrál
+              const hasPlayerPlayed = dayScores.some(
+                item => item.player_name.trim().toLowerCase() === playerName.trim().toLowerCase()
+              );
+              if (hasPlayerPlayed) {
+                serverCompletedDays.add(d);
+                if (!completedDays.includes(d)) {
+                  completedDays.push(d);
+                }
+              }
             });
+
+            // Uložíme sloučený stav i do lokální mezipaměti
+            localStorage.setItem('advent_completed', JSON.stringify(completedDays));
           }
         } catch (e) {
-          console.warn('Nelze načíst šampiony:', e);
+          console.warn('Nelze načíst data ze Supabase:', e);
         }
       }
 
-      // 2. Vykreslení dlaždic
+      // Aktualizujeme svíčky v záhlaví podle sloučeného stavu
+      updateHeaderCandles();
+
       grid.innerHTML = '';
       for (let day = 1; day <= TOTAL_DAYS; day++) {
         const door = document.createElement('div');
         door.className = 'door';
 
         const isUnlocked = window.adventConfig && window.adventConfig[day] !== undefined;
-        const isDone = completedDays.includes(day);
+        const isDone = completedDays.includes(day) || serverCompletedDays.has(day);
         const isChamp = championDays.has(day);
 
-        // Pokud hráč drží globální rekord, přidáme zlatý styl
         if (isChamp) {
           door.classList.add('champion');
         }
@@ -574,6 +842,16 @@ startGameBtn.addEventListener('click', () => {
             localStorage.setItem('advent_completed', JSON.stringify(completedDays));
           }
           renderCalendar();
+
+// Pokud právě splnil den se svíčkou (1, 6, 13, 20), po chvilce slavnostně ukážeme věnec!
+          const candleDays = [1, 6, 13, 20];
+          if (!wasCompletedBefore && candleDays.includes(activeDayNumber)) {
+            setTimeout(() => {
+              gameModal.classList.remove('active');
+              if (currentGame && currentGame.stop) currentGame.stop();
+              showWreathModal("🎉 Zapálena nová adventní svíčka!");
+            }, 1600);
+          }          
         });
       } catch (err) {
         console.error("Chyba při startu hry:", err);
