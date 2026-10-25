@@ -1,414 +1,416 @@
-// games/day7.js - Minihra: Šplhání po stromečku (Doodle Jump styl - opravená kamera a start)
+// games/day7.js - Šplhání po stromečku (s jablíčky na super skok a rukavicemi proti ledu)
 window.adventGames = window.adventGames || {};
 
 window.adventGames[7] = {
   title: "Šplhání po stromečku",
-  instructions: "Vyskákej se skřítkem po větvích až na špičku stromečku k hvězdě! Tahem do stran řiď skok. Pozor na ledové pasti (vrátí tě na start) a praskající větve!",
+  instructions: "Vyskákej se skřítkem po větvích až k hvězdě! Sbírej jablíčka 🍎 pro obří skok a rukavice 🧤, které tě ochrání před pádem z ledové pasti 🧊!",
 
   start: function(canvas, statusText, onComplete) {
-    const ctx = canvas.getContext('2d');
+    var ctx = canvas.getContext('2d');
+    canvas.width = 320;
+    canvas.height = 400;
 
-    let animationFrameId;
-    let timerInterval;
+    var animId = null;
+    var timerInt = null;
+    var timerStarted = false;
+    var startTime = null;
+    var elapsed = 0;
+    var isDone = false;
 
-    let timerStarted = false;
-    let startTime = null;
-    let elapsedSeconds = 0;
-    let isGameOver = false;
+    var GOAL_HEIGHT = 1500;
+    var START_Y = 320;
 
-    const TREE_TOP_HEIGHT = 1600;
+    var myBest = window.adventScores ? window.adventScores.getPersonalBest(7) : null;
+    var topScore = null;
+    var topHolder = 'Zatím nikdo';
 
-    // Rekordy
-    let myBestInitial = window.adventScores ? window.adventScores.getPersonalBest(7) : null;
-    let topScoreValue = null;
-    let topHolderName = 'Zatím nikdo';
-
-    function updateStatus(extra = "") {
-      const topLabel = topScoreValue !== null ? `${topScoreValue}s (${topHolderName})` : 'Zatím nikdo';
-      const progressPercent = Math.min(100, Math.floor((maxAltitude / TREE_TOP_HEIGHT) * 100));
-      if (extra) {
-        statusText.innerText = `${extra} | TOP: ${topLabel}`;
+    function refreshStatus(banner) {
+      var topTxt = topScore !== null ? (topScore + 's (' + topHolder + ')') : 'Zatím nikdo';
+      var pct = Math.min(100, Math.floor((maxAlt / GOAL_HEIGHT) * 100));
+      var gloveTxt = hasGloves ? " | 🧤 Štít aktivní!" : "";
+      if (banner) {
+        statusText.innerText = banner + " | TOP: " + topTxt;
       } else {
-        statusText.innerText = `⏱️ ${elapsedSeconds}s | Výška: ${progressPercent}% | TOP: ${topLabel}`;
+        statusText.innerText = "⏱️ " + elapsed + "s | Výška: " + pct + "%" + gloveTxt + " | TOP: " + topTxt;
       }
     }
-    updateStatus();
+    refreshStatus();
 
     if (window.adventScores && window.adventScores.getGlobalRecord) {
-      window.adventScores.getGlobalRecord(7).then(rec => {
+      window.adventScores.getGlobalRecord(7).then(function(rec) {
         if (rec) {
-          topScoreValue = rec.score;
-          topHolderName = rec.player_name;
-          updateStatus();
+          topScore = rec.score;
+          topHolder = rec.player_name;
+          refreshStatus();
         }
-      }).catch(() => {});
+      }).catch(function() {});
     }
 
-    function startTimer() {
+    function beginTimer() {
       if (timerStarted) return;
       timerStarted = true;
       startTime = Date.now();
-      timerInterval = setInterval(() => {
-        if (!isGameOver) {
-          elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-          updateStatus();
+      timerInt = setInterval(function() {
+        if (!isDone) {
+          elapsed = Math.floor((Date.now() - startTime) / 1000);
+          refreshStatus();
         }
       }, 1000);
     }
 
-    // Fyzika skřítka
-    const START_Y = 320;
-    const player = {
+    var hero = {
       x: 147,
       y: START_Y,
       vx: 0,
-      vy: -7, // Mírný první odraz při startu
+      vy: -7,
       w: 26,
       h: 26,
       facing: 1
     };
 
-    const GRAVITY = 0.36;
-    const JUMP_STRENGTH = -9.6;
+    var GRAV = 0.35;
+    var JUMP = -9.2;
+    var SUPER_JUMP = -12.5; // Odraz z jablíčka
+    var camY = START_Y - 220;
+    var maxAlt = 0;
+    var alertBanner = "";
+    var alertTimer = null;
 
-    // Kamera začíná ukotvená na spodní části canvasu
-    let cameraY = START_Y - 220;
-    let maxAltitude = 0;
-    let trapMessageTimeout = null;
-    let warningBanner = "";
+    var hasGloves = false; // Má skřítek rukavice?
 
-    // Generování větví a pastí
-    let platforms = [];
+    // Generování větví a bonusů
+    var plats = [];
+    var items = []; // Jablíčka a rukavice
 
-    function generateLevel() {
-      platforms = [];
-      // Výchozí pevná podesta přímo pod skřítkem
-      platforms.push({ x: 90, y: 350, w: 140, h: 14, type: 'normal', broken: false });
+    plats.push({ x: 80, y: 350, w: 160, h: 14, type: 'normal', broken: false });
 
-      let currentY = 290;
-      while (currentY > -TREE_TOP_HEIGHT) {
-        const gap = 46 + Math.random() * 26;
-        currentY -= gap;
+    var genY = 290;
+    while (genY > -GOAL_HEIGHT) {
+      // Příjemnější rozestupy (40 až 60 px)
+      genY -= (40 + Math.random() * 20);
+      var w = 62 + Math.random() * 26;
+      var x = 15 + Math.random() * (320 - w - 30);
+      var t = 'normal';
+      var rnd = Math.random();
 
-        const w = 60 + Math.random() * 25;
-        const x = 20 + Math.random() * (canvas.width - w - 40);
+      // Vyváženější pasti: méně ledu, více křehkých větví
+      if (rnd < 0.20 && genY < 180) {
+        t = 'fragile';
+      } else if (rnd < 0.32 && genY < 60 && genY > -GOAL_HEIGHT + 140) {
+        t = 'trap';
+      }
 
-        let type = 'normal';
-        const rand = Math.random();
-        if (rand < 0.22 && currentY < 180) {
-          type = 'fragile'; // Praskne po 1 odrazu
-        } else if (rand < 0.38 && currentY < 80 && currentY > -TREE_TOP_HEIGHT + 140) {
-          type = 'trap'; // Ledová past (pád na začátek)
-        }
+      var pl = { x: Math.round(x), y: Math.round(genY), w: Math.round(w), h: 12, type: t, broken: false };
+      plats.push(pl);
 
-        platforms.push({
-          x: Math.round(x),
-          y: Math.round(currentY),
-          w: Math.round(w),
-          h: 12,
-          type: type,
-          broken: false
+      // Přidání jablíčka (cca na 12 % normálních větví)
+      if (t === 'normal' && Math.random() < 0.16) {
+        items.push({
+          type: 'apple',
+          x: pl.x + pl.w / 2,
+          y: pl.y - 18,
+          collected: false
         });
       }
-
-      // Hvězda na samé špičce
-      platforms.push({
-        x: 120,
-        y: -TREE_TOP_HEIGHT,
-        w: 80,
-        h: 16,
-        type: 'star',
-        broken: false
-      });
+      // Přidání rukavic (cca na 8 % větví, hlavně před zónami s ledem)
+      else if (t === 'normal' && Math.random() < 0.11) {
+        items.push({
+          type: 'gloves',
+          x: pl.x + pl.w / 2,
+          y: pl.y - 18,
+          collected: false
+        });
+      }
     }
 
-    generateLevel();
+    plats.push({ x: 110, y: -GOAL_HEIGHT, w: 100, h: 16, type: 'star', broken: false });
 
-    function triggerTrapReset(reason) {
-      warningBanner = reason;
-      if (trapMessageTimeout) clearTimeout(trapMessageTimeout);
-      trapMessageTimeout = setTimeout(() => { warningBanner = ""; }, 2200);
+    function failReset(reason) {
+      alertBanner = reason;
+      if (alertTimer) clearTimeout(alertTimer);
+      alertTimer = setTimeout(function() { alertBanner = ""; }, 2200);
 
-      player.x = 147;
-      player.y = START_Y;
-      player.vx = 0;
-      player.vy = JUMP_STRENGTH * 0.7;
-      cameraY = START_Y - 220;
+      hero.x = 147;
+      hero.y = START_Y;
+      hero.vx = 0;
+      hero.vy = -6;
+      camY = START_Y - 220;
+      hasGloves = false;
+      refreshStatus();
     }
 
-    async function handleWin() {
-      if (isGameOver) return;
-      isGameOver = true;
-      if (timerInterval) clearInterval(timerInterval);
+    function winGame() {
+      if (isDone) return;
+      isDone = true;
+      if (timerInt) clearInterval(timerInt);
 
-      const finalTime = Math.max(1, elapsedSeconds);
-
+      var score = Math.max(1, elapsed);
       if (window.adventScores && window.adventScores.recordScoreOnline) {
-        await window.adventScores.recordScoreOnline(7, finalTime);
+        window.adventScores.recordScoreOnline(7, score);
       }
 
-      let msg = `🌟 Špička pokořena za ${finalTime}s! `;
-      if (!topScoreValue || finalTime < topScoreValue) {
-        msg += `🔥 NOVÝ GLOBÁLNÍ REKORD!`;
-      } else if (!myBestInitial || finalTime < myBestInitial) {
-        msg += `🌟 Tvůj osobní rekord!`;
-      }
+      var msg = "🌟 Hvězda dosažena za " + score + "s! ";
+      if (!topScore || score < topScore) msg += "🔥 NOVÝ REKORD!";
+      else if (!myBest || score < myBest) msg += "🌟 Tvůj rekord!";
 
       statusText.innerText = msg;
-      onComplete(finalTime);
+      onComplete(score);
     }
 
-    // Ovládání
-    let targetX = 160;
-    let isTouching = false;
-    const keys = { left: false, right: false };
+    var dragging = false;
+    var aimX = 160;
+    var keys = { l: false, r: false };
 
-    function handlePointer(clientX) {
-      startTimer();
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      targetX = (clientX - rect.left) * scaleX;
+    function ptrMove(cx) {
+      beginTimer();
+      var rect = canvas.getBoundingClientRect();
+      aimX = (cx - rect.left) * (320 / rect.width);
     }
 
-    function updatePhysics() {
-      if (isGameOver) return;
+    function loop() {
+      if (!isDone) {
+        if (keys.l) hero.vx = -4.2;
+        else if (keys.r) hero.vx = 4.2;
+        else if (dragging) {
+          hero.vx = Math.max(-5, Math.min(5, (aimX - (hero.x + hero.w / 2)) * 0.25));
+        } else {
+          hero.vx *= 0.85;
+        }
 
-      if (keys.left) player.vx = -4.2;
-      else if (keys.right) player.vx = 4.2;
-      else if (isTouching) {
-        const dx = targetX - (player.x + player.w / 2);
-        player.vx = Math.max(-5, Math.min(5, dx * 0.25));
-      } else {
-        player.vx *= 0.85;
-      }
+        if (hero.vx > 0.4) hero.facing = 1;
+        else if (hero.vx < -0.4) hero.facing = -1;
 
-      if (player.vx > 0.4) player.facing = 1;
-      else if (player.vx < -0.4) player.facing = -1;
+        hero.x += hero.vx;
+        if (hero.x < -hero.w) hero.x = 320;
+        if (hero.x > 320) hero.x = -hero.w;
 
-      player.x += player.vx;
+        hero.vy += GRAV;
+        hero.y += hero.vy;
 
-      // Wrap around okraje
-      if (player.x < -player.w) player.x = canvas.width;
-      if (player.x > canvas.width) player.x = -player.w;
+        // Kolize s bonusy (jablíčka a rukavice)
+        var heroCenterX = hero.x + hero.w / 2;
+        var heroCenterY = hero.y + hero.h / 2;
 
-      // Gravitace
-      player.vy += GRAVITY;
-      player.y += player.vy;
-
-      // Kolize s větvemi jen při pohybu dolů
-      if (player.vy > 0) {
-        const footY = player.y + player.h;
-        const prevFootY = footY - player.vy;
-
-        for (let i = 0; i < platforms.length; i++) {
-          const p = platforms[i];
-          if (p.broken) continue;
-
-          if (
-            footY >= p.y && prevFootY <= p.y + 10 &&
-            player.x + player.w >= p.x && player.x <= p.x + p.w
-          ) {
-            if (p.type === 'star') {
-              player.vy = -3;
-              handleWin();
-            } else if (p.type === 'trap') {
-              triggerTrapReset("🧊 Ledová past! Spadl jsi na start!");
-            } else if (p.type === 'fragile') {
-              p.broken = true;
-              player.vy = JUMP_STRENGTH * 0.9;
-            } else {
-              player.vy = JUMP_STRENGTH;
+        for (var k = 0; k < items.length; k++) {
+          var it = items[k];
+          if (it.collected) continue;
+          if (Math.hypot(heroCenterX - it.x, heroCenterY - it.y) < 22) {
+            it.collected = true;
+            if (it.type === 'apple') {
+              hero.vy = SUPER_JUMP; // Katapult nahoru!
+              alertBanner = "🍎 Super skok!";
+            } else if (it.type === 'gloves') {
+              hasGloves = true;
+              alertBanner = "🧤 Zimní rukavice nasazeny!";
             }
-            break;
+            if (alertTimer) clearTimeout(alertTimer);
+            alertTimer = setTimeout(function() { alertBanner = ""; }, 1800);
+            refreshStatus();
           }
+        }
+
+        // Dopady na větve (jen při pádu dolů)
+        if (hero.vy > 0) {
+          var foot = hero.y + hero.h;
+          var prev = foot - hero.vy;
+
+          for (var i = 0; i < plats.length; i++) {
+            var p = plats[i];
+            if (p.broken) continue;
+
+            if (foot >= p.y && prev <= p.y + 12 && hero.x + hero.w >= p.x && hero.x <= p.x + p.w) {
+              if (p.type === 'star') {
+                hero.vy = -3;
+                winGame();
+              } else if (p.type === 'trap') {
+                if (hasGloves) {
+                  // Rukavice zachránily situaci!
+                  hasGloves = false;
+                  p.broken = true; // Rozbije led
+                  hero.vy = JUMP;
+                  alertBanner = "🧤 Led překonán rukavicemi!";
+                  if (alertTimer) clearTimeout(alertTimer);
+                  alertTimer = setTimeout(function() { alertBanner = ""; }, 1800);
+                  refreshStatus();
+                } else {
+                  failReset("🧊 Ledová past! Zpět na začátek!");
+                }
+              } else if (p.type === 'fragile') {
+                p.broken = true;
+                hero.vy = JUMP * 0.9;
+                // Sníh znovu napadne za 3 sekundy
+                (function(platform) {
+                  setTimeout(function() { platform.broken = false; }, 3000);
+                })(p);
+              } else {
+                hero.vy = JUMP;
+              }
+              break;
+            }
+          }
+        }
+
+        var targetCam = hero.y - 220;
+        if (targetCam < camY) camY = targetCam;
+
+        var alt = Math.max(0, Math.floor(START_Y - hero.y));
+        if (alt > maxAlt) maxAlt = alt;
+
+        if (hero.y > camY + 440) {
+          failReset("⚠️ Pád z větve! Zpět na začátek!");
         }
       }
 
-      // Kamera se posouvá POUZE nahoru
-      const targetCamY = player.y - 220;
-      if (targetCamY < cameraY) {
-        cameraY = targetCamY;
-      }
-
-      const currentAlt = Math.max(0, Math.floor(START_Y - player.y));
-      if (currentAlt > maxAltitude) {
-        maxAltitude = currentAlt;
-      }
-
-      // Pád pod kameru
-      if (player.y > cameraY + canvas.height + 30) {
-        triggerTrapReset("⚠️ Pád z větve! Zpět na začátek!");
-      }
-    }
-
-    function draw() {
-      updatePhysics();
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Pozadí
+      // Kreslení scény
       ctx.fillStyle = '#061325';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, 320, 400);
 
       ctx.save();
-      ctx.translate(0, -cameraY);
+      ctx.translate(0, -camY);
 
-      // Kmen stromečku uprostřed
-      ctx.fillStyle = '#1e1308';
-      ctx.fillRect(canvas.width / 2 - 12, -TREE_TOP_HEIGHT - 40, 24, TREE_TOP_HEIGHT + 450);
+      // Kmen stromečku
+      ctx.fillStyle = '#1c1106';
+      ctx.fillRect(148, -GOAL_HEIGHT - 30, 24, GOAL_HEIGHT + 450);
 
-      // 1. Větve
-      platforms.forEach(p => {
-        if (p.y < cameraY - 40 || p.y > cameraY + canvas.height + 40) return;
-        if (p.broken) return;
+      // Větve
+      for (var j = 0; j < plats.length; j++) {
+        var pl = plats[j];
+        if (pl.broken) continue;
+        if (pl.y < camY - 30 || pl.y > camY + 430) continue;
 
-        if (p.type === 'star') {
+        if (pl.type === 'star') {
           ctx.fillStyle = '#eab308';
-          ctx.beginPath();
-          ctx.roundRect(p.x, p.y, p.w, p.h, 6);
-          ctx.fill();
-
-          ctx.font = '36px sans-serif';
+          ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
+          ctx.font = '34px sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('⭐', p.x + p.w / 2, p.y - 12);
-        } else if (p.type === 'trap') {
+          ctx.fillText('⭐', pl.x + pl.w / 2, pl.y - 8);
+        } else if (pl.type === 'trap') {
           ctx.fillStyle = '#38bdf8';
-          ctx.beginPath();
-          ctx.roundRect(p.x, p.y, p.w, p.h, 4);
-          ctx.fill();
-
-          ctx.strokeStyle = '#e0f2fe';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-
+          ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
           ctx.font = '14px sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('🧊', p.x + p.w / 2, p.y + 8);
-        } else if (p.type === 'fragile') {
-          ctx.fillStyle = '#cbd5e1';
-          ctx.beginPath();
-          ctx.roundRect(p.x, p.y, p.w, p.h, 4);
-          ctx.fill();
-
+          ctx.fillText('🧊', pl.x + pl.w / 2, pl.y + 9);
+        } else if (pl.type === 'fragile') {
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(p.x + 3, p.y - 2, p.w - 6, 3);
+          ctx.fillRect(pl.x + 2, pl.y - 2, pl.w - 4, 3);
         } else {
           ctx.fillStyle = '#15803d';
-          ctx.beginPath();
-          ctx.roundRect(p.x, p.y, p.w, p.h, 5);
-          ctx.fill();
-
+          ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
           ctx.fillStyle = '#22c55e';
-          ctx.fillRect(p.x + 2, p.y, p.w - 4, 3);
-
-          if (p.w > 65) {
-            ctx.fillStyle = '#ef4444';
-            ctx.beginPath();
-            ctx.arc(p.x + 10, p.y + p.h + 4, 3, 0, Math.PI * 2);
-            ctx.fill();
-          }
+          ctx.fillRect(pl.x + 2, pl.y - 2, pl.w - 4, 3);
         }
-      });
-
-      // 2. Skřítek
-      ctx.save();
-      ctx.translate(player.x + player.w / 2, player.y + player.h / 2);
-      if (player.facing === -1) {
-        ctx.scale(-1, 1);
       }
+
+      // Bonusy (jablíčka a rukavice)
+      for (var m = 0; m < items.length; m++) {
+        var itm = items[m];
+        if (itm.collected) continue;
+        if (itm.y < camY - 30 || itm.y > camY + 430) continue;
+
+        ctx.font = '18px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(itm.type === 'apple' ? '🍎' : '🧤', itm.x, itm.y);
+      }
+
+      // Skřítek
+      ctx.save();
+      ctx.translate(hero.x + hero.w / 2, hero.y + hero.h / 2);
+      if (hero.facing === -1) ctx.scale(-1, 1);
+
+      // Ochranná modrá záře a ikona rukavic, pokud má štít
+      if (hasGloves) {
+        ctx.beginPath();
+        ctx.arc(0, 0, 18, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+        ctx.fill();
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.font = '12px sans-serif';
+        ctx.fillText('🧤', 12, -12);
+      }
+
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = '26px sans-serif';
       ctx.fillText('🧝', 0, -2);
       ctx.restore();
 
-      ctx.restore(); // Konec posunu kamery
+      ctx.restore();
 
-      // Horní stavová lišta (kreslí se na pevné místo mimo kameru)
+      // Horní lišta
       ctx.fillStyle = '#1e293b';
-      ctx.fillRect(0, 0, canvas.width, 36);
+      ctx.fillRect(0, 0, 320, 34);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 12px sans-serif';
 
-      if (isGameOver) {
+      if (isDone) {
         ctx.fillStyle = '#facc15';
-        ctx.fillText('🌟 HVĚZDA DOSAŽENA! 🌟', canvas.width / 2, 18);
-      } else if (warningBanner) {
-        ctx.fillStyle = '#f87171';
-        ctx.fillText(warningBanner, canvas.width / 2, 18);
+        ctx.fillText('🌟 HVĚZDA DOSAŽENA! 🌟', 160, 17);
+      } else if (alertBanner) {
+        ctx.fillStyle = alertBanner.indexOf('🧊') !== -1 || alertBanner.indexOf('⚠️') !== -1 ? '#f87171' : '#facc15';
+        ctx.fillText(alertBanner, 160, 17);
       } else {
         ctx.fillStyle = '#38bdf8';
-        const pct = Math.min(100, Math.floor((maxAltitude / TREE_TOP_HEIGHT) * 100));
-        ctx.fillText(`🎄 Vrchol: ${pct}% | Špička: 100%`, canvas.width / 2, 18);
+        var p = Math.min(100, Math.floor((maxAlt / GOAL_HEIGHT) * 100));
+        var gloveStatus = hasGloves ? " | 🧤 Štít" : "";
+        ctx.fillText("🎄 Vrchol: " + p + "%" + gloveStatus + " | Špička: 100%", 160, 17);
       }
 
-      animationFrameId = requestAnimationFrame(draw);
+      animId = requestAnimationFrame(loop);
     }
 
-    this.touchStart = (e) => {
-      e.preventDefault();
-      isTouching = true;
-      handlePointer(e.touches[0].clientX);
+    var ts = function(e) { e.preventDefault(); dragging = true; ptrMove(e.touches[0].clientX); };
+    var tm = function(e) { e.preventDefault(); if (dragging) ptrMove(e.touches[0].clientX); };
+    var te = function(e) { e.preventDefault(); dragging = false; };
+
+    var md = function(e) { dragging = true; ptrMove(e.clientX); };
+    var mm = function(e) { if (dragging) ptrMove(e.clientX); };
+    var mu = function() { dragging = false; };
+
+    var kd = function(e) {
+      beginTimer();
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = true;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = true;
     };
-    this.touchMove = (e) => {
-      e.preventDefault();
-      if (isTouching) handlePointer(e.touches[0].clientX);
-    };
-    this.touchEnd = (e) => {
-      e.preventDefault();
-      isTouching = false;
+    var ku = function(e) {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = false;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = false;
     };
 
-    this.mouseDown = (e) => {
-      isTouching = true;
-      handlePointer(e.clientX);
-    };
-    this.mouseMove = (e) => {
-      if (isTouching) handlePointer(e.clientX);
-    };
-    this.mouseUp = () => {
-      isTouching = false;
-    };
+    canvas.addEventListener('touchstart', ts, { passive: false });
+    canvas.addEventListener('touchmove', tm, { passive: false });
+    canvas.addEventListener('touchend', te, { passive: false });
 
-    this.keyDown = (e) => {
-      startTimer();
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
-    };
-    this.keyUp = (e) => {
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
-    };
+    canvas.addEventListener('mousedown', md);
+    canvas.addEventListener('mousemove', mm);
+    canvas.addEventListener('mouseup', mu);
 
-    canvas.addEventListener('touchstart', this.touchStart, { passive: false });
-    canvas.addEventListener('touchmove', this.touchMove, { passive: false });
-    canvas.addEventListener('touchend', this.touchEnd, { passive: false });
+    window.addEventListener('keydown', kd);
+    window.addEventListener('keyup', ku);
 
-    canvas.addEventListener('mousedown', this.mouseDown);
-    canvas.addEventListener('mousemove', this.mouseMove);
-    canvas.addEventListener('mouseup', this.mouseUp);
-
-    window.addEventListener('keydown', this.keyDown);
-    window.addEventListener('keyup', this.keyUp);
-
-    draw();
+    loop();
 
     this.cleanup = function() {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-      if (timerInterval) clearInterval(timerInterval);
-      if (trapMessageTimeout) clearTimeout(trapMessageTimeout);
+      if (animId) cancelAnimationFrame(animId);
+      if (timerInt) clearInterval(timerInt);
+      if (alertTimer) clearTimeout(alertTimer);
 
-      canvas.removeEventListener('touchstart', this.touchStart);
-      canvas.removeEventListener('touchmove', this.touchMove);
-      canvas.removeEventListener('touchend', this.touchEnd);
+      canvas.removeEventListener('touchstart', ts);
+      canvas.removeEventListener('touchmove', tm);
+      canvas.removeEventListener('touchend', te);
 
-      canvas.removeEventListener('mousedown', this.mouseDown);
-      canvas.removeEventListener('mousemove', this.mouseMove);
-      canvas.removeEventListener('mouseup', this.mouseUp);
+      canvas.removeEventListener('mousedown', md);
+      canvas.removeEventListener('mousemove', mm);
+      canvas.removeEventListener('mouseup', mu);
 
-      window.removeEventListener('keydown', this.keyDown);
-      window.removeEventListener('keyup', this.keyUp);
+      window.removeEventListener('keydown', kd);
+      window.removeEventListener('keyup', ku);
     };
   },
 

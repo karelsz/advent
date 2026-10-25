@@ -551,24 +551,34 @@ async function renderCalendar() {
       }
     }
 
-    // Samotné spuštění po odkliknutí tlačítka
-    startGameBtn.addEventListener('click', () => {
+startGameBtn.addEventListener('click', () => {
       if (!currentGame) return;
 
-      // Skryjeme intro, zobrazíme canvas i stavový řádek
+      // 1. Skryjeme intro
       introScreen.style.display = 'none';
-      canvas.style.display = 'block';
-      statusText.style.display = 'block';
 
-      // Odstartujeme hru
-currentGame.start(canvas, statusText, (finalScore) => { 
-        if (!completedDays.includes(activeDayNumber)) {
-          completedDays.push(activeDayNumber);
-          localStorage.setItem('advent_completed', JSON.stringify(completedDays));
-        }
-        // Překreslí kalendář vždy (ověří nového šampiona dne)
-        renderCalendar();
-      });
+      // 2. Explicitně zapneme a nastavíme canvas
+      canvas.style.display = 'block';
+      canvas.width = 320;
+      canvas.height = 400;
+
+      // 3. Stavový řádek
+      statusText.style.display = 'block';
+      statusText.innerText = "Hra běží...";
+
+      // 4. Nastartujeme hru
+      try {
+        currentGame.start(canvas, statusText, (finalScore) => {
+          if (!completedDays.includes(activeDayNumber)) {
+            completedDays.push(activeDayNumber);
+            localStorage.setItem('advent_completed', JSON.stringify(completedDays));
+          }
+          renderCalendar();
+        });
+      } catch (err) {
+        console.error("Chyba při startu hry:", err);
+        statusText.innerText = "Chyba při startu: " + err.message;
+      }
     });
 
     closeGameBtn.addEventListener('click', () => {
