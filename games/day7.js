@@ -1,9 +1,9 @@
-// games/day7.js - Šplhání po stromečku (s jablíčky na super skok a rukavicemi proti ledu)
+// games/day7.js - Šplhání po stromečku (s arcade tlačítky VLEVO / VPRAVO)
 window.adventGames = window.adventGames || {};
 
 window.adventGames[7] = {
   title: "Šplhání po stromečku",
-  instructions: "Vyskákej se skřítkem po větvích až k hvězdě! Sbírej jablíčka 🍎 pro obří skok a rukavice 🧤, které tě ochrání před pádem z ledové pasti 🧊!",
+  instructions: "Vyskákej se skřítkem po větvích až k hvězdě! Použij tlačítka dole (nebo šipky na klávesnici). Sbírej jablíčka 🍎 pro obří skok a rukavice 🧤 proti ledu 🧊!",
 
   start: function(canvas, statusText, onComplete) {
     var ctx = canvas.getContext('2d');
@@ -17,9 +17,68 @@ window.adventGames[7] = {
     var elapsed = 0;
     var isDone = false;
 
-    var GOAL_HEIGHT = 1500;
+    var GOAL_HEIGHT = 3000;
     var START_Y = 320;
 
+    // --- Vytvoření ovládacích tlačítek pod canvasem ---
+    var controlsWrap = document.getElementById('day7-controls-wrap');
+    if (!controlsWrap) {
+      controlsWrap = document.createElement('div');
+      controlsWrap.id = 'day7-controls-wrap';
+      controlsWrap.style.width = '100%';
+      controlsWrap.style.maxWidth = '320px';
+      controlsWrap.style.margin = '10px auto 0 auto';
+      controlsWrap.style.display = 'grid';
+      controlsWrap.style.gridTemplateColumns = '1fr 1fr';
+      controlsWrap.style.gap = '10px';
+
+      controlsWrap.innerHTML = `
+        <button id="day7-btn-left" style="
+          background: #1e293b;
+          border: 2px solid #3b82f6;
+          color: #ffffff;
+          padding: 14px;
+          border-radius: 12px;
+          font-size: 16px;
+          font-weight: bold;
+          cursor: pointer;
+          touch-action: manipulation;
+          user-select: none;
+          -webkit-user-select: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        ">◀ VLEVO</button>
+        <button id="day7-btn-right" style="
+          background: #1e293b;
+          border: 2px solid #3b82f6;
+          color: #ffffff;
+          padding: 14px;
+          border-radius: 12px;
+          font-size: 16px;
+          font-weight: bold;
+          cursor: pointer;
+          touch-action: manipulation;
+          user-select: none;
+          -webkit-user-select: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        ">VPRAVO ▶</button>
+      `;
+      canvas.parentNode.insertBefore(controlsWrap, statusText);
+    } else {
+      controlsWrap.style.display = 'grid';
+    }
+
+    var btnLeft = document.getElementById('day7-btn-left');
+    var btnRight = document.getElementById('day7-btn-right');
+
+    // Rekordy
     var myBest = window.adventScores ? window.adventScores.getPersonalBest(7) : null;
     var topScore = null;
     var topHolder = 'Zatím nikdo';
@@ -70,30 +129,28 @@ window.adventGames[7] = {
 
     var GRAV = 0.35;
     var JUMP = -9.2;
-    var SUPER_JUMP = -12.5; // Odraz z jablíčka
+    var SUPER_JUMP = -15.5;
     var camY = START_Y - 220;
     var maxAlt = 0;
     var alertBanner = "";
     var alertTimer = null;
 
-    var hasGloves = false; // Má skřítek rukavice?
+    var hasGloves = false;
 
     // Generování větví a bonusů
     var plats = [];
-    var items = []; // Jablíčka a rukavice
+    var items = [];
 
     plats.push({ x: 80, y: 350, w: 160, h: 14, type: 'normal', broken: false });
 
     var genY = 290;
     while (genY > -GOAL_HEIGHT) {
-      // Příjemnější rozestupy (40 až 60 px)
       genY -= (40 + Math.random() * 20);
       var w = 62 + Math.random() * 26;
       var x = 15 + Math.random() * (320 - w - 30);
       var t = 'normal';
       var rnd = Math.random();
 
-      // Vyváženější pasti: méně ledu, více křehkých větví
       if (rnd < 0.20 && genY < 180) {
         t = 'fragile';
       } else if (rnd < 0.32 && genY < 60 && genY > -GOAL_HEIGHT + 140) {
@@ -103,7 +160,6 @@ window.adventGames[7] = {
       var pl = { x: Math.round(x), y: Math.round(genY), w: Math.round(w), h: 12, type: t, broken: false };
       plats.push(pl);
 
-      // Přidání jablíčka (cca na 12 % normálních větví)
       if (t === 'normal' && Math.random() < 0.16) {
         items.push({
           type: 'apple',
@@ -111,9 +167,7 @@ window.adventGames[7] = {
           y: pl.y - 18,
           collected: false
         });
-      }
-      // Přidání rukavic (cca na 8 % větví, hlavně před zónami s ledem)
-      else if (t === 'normal' && Math.random() < 0.11) {
+      } else if (t === 'normal' && Math.random() < 0.11) {
         items.push({
           type: 'gloves',
           x: pl.x + pl.w / 2,
@@ -136,6 +190,14 @@ window.adventGames[7] = {
       hero.vy = -6;
       camY = START_Y - 220;
       hasGloves = false;
+
+      for (var i = 0; i < plats.length; i++) {
+        plats[i].broken = false;
+      }
+      for (var k = 0; k < items.length; k++) {
+        items[k].collected = false;
+      }
+
       refreshStatus();
     }
 
@@ -157,22 +219,16 @@ window.adventGames[7] = {
       onComplete(score);
     }
 
-    var dragging = false;
-    var aimX = 160;
-    var keys = { l: false, r: false };
-
-    function ptrMove(cx) {
-      beginTimer();
-      var rect = canvas.getBoundingClientRect();
-      aimX = (cx - rect.left) * (320 / rect.width);
-    }
+    // Stav kláves a tlačítek
+    var inputLeft = false;
+    var inputRight = false;
 
     function loop() {
       if (!isDone) {
-        if (keys.l) hero.vx = -4.2;
-        else if (keys.r) hero.vx = 4.2;
-        else if (dragging) {
-          hero.vx = Math.max(-5, Math.min(5, (aimX - (hero.x + hero.w / 2)) * 0.25));
+        if (inputLeft && !inputRight) {
+          hero.vx = -4.5;
+        } else if (inputRight && !inputLeft) {
+          hero.vx = 4.5;
         } else {
           hero.vx *= 0.85;
         }
@@ -187,7 +243,7 @@ window.adventGames[7] = {
         hero.vy += GRAV;
         hero.y += hero.vy;
 
-        // Kolize s bonusy (jablíčka a rukavice)
+        // Bonusy
         var heroCenterX = hero.x + hero.w / 2;
         var heroCenterY = hero.y + hero.h / 2;
 
@@ -197,7 +253,7 @@ window.adventGames[7] = {
           if (Math.hypot(heroCenterX - it.x, heroCenterY - it.y) < 22) {
             it.collected = true;
             if (it.type === 'apple') {
-              hero.vy = SUPER_JUMP; // Katapult nahoru!
+              hero.vy = SUPER_JUMP;
               alertBanner = "🍎 Super skok!";
             } else if (it.type === 'gloves') {
               hasGloves = true;
@@ -209,7 +265,7 @@ window.adventGames[7] = {
           }
         }
 
-        // Dopady na větve (jen při pádu dolů)
+        // Dopad na větve
         if (hero.vy > 0) {
           var foot = hero.y + hero.h;
           var prev = foot - hero.vy;
@@ -224,9 +280,8 @@ window.adventGames[7] = {
                 winGame();
               } else if (p.type === 'trap') {
                 if (hasGloves) {
-                  // Rukavice zachránily situaci!
                   hasGloves = false;
-                  p.broken = true; // Rozbije led
+                  p.broken = true;
                   hero.vy = JUMP;
                   alertBanner = "🧤 Led překonán rukavicemi!";
                   if (alertTimer) clearTimeout(alertTimer);
@@ -238,7 +293,6 @@ window.adventGames[7] = {
               } else if (p.type === 'fragile') {
                 p.broken = true;
                 hero.vy = JUMP * 0.9;
-                // Sníh znovu napadne za 3 sekundy
                 (function(platform) {
                   setTimeout(function() { platform.broken = false; }, 3000);
                 })(p);
@@ -261,14 +315,14 @@ window.adventGames[7] = {
         }
       }
 
-      // Kreslení scény
+      // Vykreslování
       ctx.fillStyle = '#061325';
       ctx.fillRect(0, 0, 320, 400);
 
       ctx.save();
       ctx.translate(0, -camY);
 
-      // Kmen stromečku
+      // Kmen
       ctx.fillStyle = '#1c1106';
       ctx.fillRect(148, -GOAL_HEIGHT - 30, 24, GOAL_HEIGHT + 450);
 
@@ -303,7 +357,7 @@ window.adventGames[7] = {
         }
       }
 
-      // Bonusy (jablíčka a rukavice)
+      // Bonusy
       for (var m = 0; m < items.length; m++) {
         var itm = items[m];
         if (itm.collected) continue;
@@ -320,7 +374,6 @@ window.adventGames[7] = {
       ctx.translate(hero.x + hero.w / 2, hero.y + hero.h / 2);
       if (hero.facing === -1) ctx.scale(-1, 1);
 
-      // Ochranná modrá záře a ikona rukavic, pokud má štít
       if (hasGloves) {
         ctx.beginPath();
         ctx.arc(0, 0, 18, 0, Math.PI * 2);
@@ -342,7 +395,7 @@ window.adventGames[7] = {
 
       ctx.restore();
 
-      // Horní lišta
+      // Lišta
       ctx.fillStyle = '#1e293b';
       ctx.fillRect(0, 0, 320, 34);
       ctx.textAlign = 'center';
@@ -365,31 +418,58 @@ window.adventGames[7] = {
       animId = requestAnimationFrame(loop);
     }
 
-    var ts = function(e) { e.preventDefault(); dragging = true; ptrMove(e.touches[0].clientX); };
-    var tm = function(e) { e.preventDefault(); if (dragging) ptrMove(e.touches[0].clientX); };
-    var te = function(e) { e.preventDefault(); dragging = false; };
+    // --- Obsluha tlačítek (Touch + Myš) ---
+    function setBtnStyle(btn, active) {
+      if (!btn) return;
+      btn.style.background = active ? '#2563eb' : '#1e293b';
+      btn.style.transform = active ? 'scale(0.96)' : 'scale(1)';
+    }
 
-    var md = function(e) { dragging = true; ptrMove(e.clientX); };
-    var mm = function(e) { if (dragging) ptrMove(e.clientX); };
-    var mu = function() { dragging = false; };
+    var leftDown = function(e) { e.preventDefault(); beginTimer(); inputLeft = true; setBtnStyle(btnLeft, true); };
+    var leftUp = function(e) { e.preventDefault(); inputLeft = false; setBtnStyle(btnLeft, false); };
 
+    var rightDown = function(e) { e.preventDefault(); beginTimer(); inputRight = true; setBtnStyle(btnRight, true); };
+    var rightUp = function(e) { e.preventDefault(); inputRight = false; setBtnStyle(btnRight, false); };
+
+    if (btnLeft) {
+      btnLeft.addEventListener('touchstart', leftDown, { passive: false });
+      btnLeft.addEventListener('touchend', leftUp, { passive: false });
+      btnLeft.addEventListener('mousedown', leftDown);
+      btnLeft.addEventListener('mouseup', leftUp);
+      btnLeft.addEventListener('mouseleave', leftUp);
+    }
+
+    if (btnRight) {
+      btnRight.addEventListener('touchstart', rightDown, { passive: false });
+      btnRight.addEventListener('touchend', rightUp, { passive: false });
+      btnRight.addEventListener('mousedown', rightDown);
+      btnRight.addEventListener('mouseup', rightUp);
+      btnRight.addEventListener('mouseleave', rightUp);
+    }
+
+    // --- Klávesnice (PC šipky a A/D) ---
     var kd = function(e) {
       beginTimer();
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = true;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = true;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        inputLeft = true;
+        setBtnStyle(btnLeft, true);
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        inputRight = true;
+        setBtnStyle(btnRight, true);
+      }
     };
+
     var ku = function(e) {
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = false;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = false;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        inputLeft = false;
+        setBtnStyle(btnLeft, false);
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        inputRight = false;
+        setBtnStyle(btnRight, false);
+      }
     };
-
-    canvas.addEventListener('touchstart', ts, { passive: false });
-    canvas.addEventListener('touchmove', tm, { passive: false });
-    canvas.addEventListener('touchend', te, { passive: false });
-
-    canvas.addEventListener('mousedown', md);
-    canvas.addEventListener('mousemove', mm);
-    canvas.addEventListener('mouseup', mu);
 
     window.addEventListener('keydown', kd);
     window.addEventListener('keyup', ku);
@@ -401,13 +481,23 @@ window.adventGames[7] = {
       if (timerInt) clearInterval(timerInt);
       if (alertTimer) clearTimeout(alertTimer);
 
-      canvas.removeEventListener('touchstart', ts);
-      canvas.removeEventListener('touchmove', tm);
-      canvas.removeEventListener('touchend', te);
+      if (controlsWrap) controlsWrap.style.display = 'none';
 
-      canvas.removeEventListener('mousedown', md);
-      canvas.removeEventListener('mousemove', mm);
-      canvas.removeEventListener('mouseup', mu);
+      if (btnLeft) {
+        btnLeft.removeEventListener('touchstart', leftDown);
+        btnLeft.removeEventListener('touchend', leftUp);
+        btnLeft.removeEventListener('mousedown', leftDown);
+        btnLeft.removeEventListener('mouseup', leftUp);
+        btnLeft.removeEventListener('mouseleave', leftUp);
+      }
+
+      if (btnRight) {
+        btnRight.removeEventListener('touchstart', rightDown);
+        btnRight.removeEventListener('touchend', rightUp);
+        btnRight.removeEventListener('mousedown', rightDown);
+        btnRight.removeEventListener('mouseup', rightUp);
+        btnRight.removeEventListener('mouseleave', rightUp);
+      }
 
       window.removeEventListener('keydown', kd);
       window.removeEventListener('keyup', ku);
