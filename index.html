@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Adventní kalendář</title>
+  <style>
+    :root {
+      --bg: #0b1a2d;
+      --card-locked: #182c44;
+      --card-unlocked: #c92a2a;
+      --card-done: #2b8a3e;
+      --gold: #ffd43b;
+      --text: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top, #1a365d, var(--bg));
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    header h1 {
+      font-size: 1.8rem;
+      margin-bottom: 4px;
+    }
+
+    header p {
+      font-size: 0.95rem;
+      color: #cbd5e1;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .door {
+      aspect-ratio: 1;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      font-weight: bold;
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+
+    .door.locked {
+      background-color: var(--card-locked);
+      color: #64748b;
+      cursor: not-allowed;
+      border-color: transparent;
+    }
+
+    .door.unlocked {
+      background: linear-gradient(135deg, #d93838, var(--card-unlocked));
+      color: #fff;
+    }
+
+    .door.done {
+      background: linear-gradient(135deg, #2f9e44, var(--card-done));
+    }
+
+    .door .badge {
+      font-size: 0.75rem;
+      margin-top: 2px;
+    }
+
+    /* Modální okno s hrou */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      padding: 12px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-card {
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 400px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .btn-close {
+      background: #334155;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    canvas {
+      background: #020617;
+      border-radius: 8px;
+      border: 1px solid #1e293b;
+      display: block;
+      width: 100%;
+      touch-action: none;
+    }
+
+    .game-status {
+      margin-top: 10px;
+      font-size: 0.95rem;
+      text-align: center;
+      min-height: 24px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🎄 Adventní kalendář</h1>
+    <p>Otevírej každý den novou minihru!</p>
+  </header>
+
+  <main class="calendar-grid" id="calendar"></main>
+
+  <div class="modal-overlay" id="gameModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modalTitle">Den 1</h2>
+        <button class="btn-close" id="closeBtn">✕</button>
+      </div>
+      <canvas id="gameCanvas" width="320" height="400"></canvas>
+      <div class="game-status" id="gameStatus">Tažením prstu chytej padající dárky!</div>
+    </div>
+  </div>
+
+  <script>
+    const TOTAL_DAYS = 24;
+    const completedDays = JSON.parse(localStorage.getItem('advent_completed') || '[]');
+
+    // Vykreslení kalendáře
+    const grid = document.getElementById('calendar');
+
+    for (let day = 1; day <= TOTAL_DAYS; day++) {
+      const door = document.createElement('div');
+      door.className = 'door';
+
+      // Pro testování je zatím odemčen pouze Den 1
+      const isUnlocked = (day === 1);
+      const isDone = completedDays.includes(day);
+
+      if (isDone) {
+        door.classList.add('done');
+        door.innerHTML = `<span>${day}</span><span class="badge">⭐</span>`;
+      } else if (isUnlocked) {
+        door.classList.add('unlocked');
+        door.innerHTML = `<span>${day}</span><span class="badge">🎁</span>`;
+      } else {
+        door.classList.add('locked');
+        door.innerHTML = `<span>${day}</span><span class="badge">🔒</span>`;
+      }
+
+      door.addEventListener('click', () => {
+        if (!isUnlocked && !isDone) {
+          alert("Tento den je ještě schovaný pod sněhem!");
+          return;
+        }
+        openGame(day);
+      });
+
+      grid.appendChild(door);
+    }
+
+    // Obsluha modálního okna
+    const modal = document.getElementById('gameModal');
+    const closeBtn = document.getElementById('closeBtn');
+
+    closeBtn.addEventListener('click', () => {
+      modal.classList.remove('active');
+      stopGame();
+    });
+
+    function openGame(day) {
+      document.getElementById('modalTitle').innerText = `Den ${day}: Chytání dárků`;
+      modal.classList.add('active');
+      startGameDay1();
+    }
+
+    // Minihra pro Den 1: Chytání dárků
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('gameStatus');
+
+    let animationFrameId;
+    let basketX = 130;
+    const basketWidth = 60;
+    const basketHeight = 16;
+    let gifts = [];
+    let caughtCount = 0;
+    const TARGET_GIFTS = 7;
+    let isGameOver = false;
+
+    function moveBasket(clientX) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const x = (clientX - rect.left) * scaleX;
+      basketX = Math.max(0, Math.min(canvas.width - basketWidth, x - basketWidth / 2));
+    }
+
+    canvas.addEventListener('touchmove', (e) => {
+      moveBasket(e.touches[0].clientX);
+    }, { passive: true });
+
+    canvas.addEventListener('mousemove', (e) => {
+      moveBasket(e.clientX);
+    });
+
+    function startGameDay1() {
+      stopGame();
+      caughtCount = 0;
+      isGameOver = false;
+      gifts = [];
+      statusText.innerText = `Chyť 7 dárků! Splněno: 0 / ${TARGET_GIFTS}`;
+      gameLoop();
+    }
+
+    function stopGame() {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Náhodné generování dárků
+      if (Math.random() < 0.03 && !isGameOver) {
+        gifts.push({
+          x: Math.random() * (canvas.width - 24),
+          y: -20,
+          speed: 2 + Math.random() * 2,
+          char: ['🎁', '⭐', '🍬'][Math.floor(Math.random() * 3)]
+        });
+      }
+
+      // Kreslení saní/košíku
+      ctx.fillStyle = '#e03131';
+      ctx.fillRect(basketX, canvas.height - basketHeight - 10, basketWidth, basketHeight);
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px sans-serif';
+      ctx.fillText("SANĚ", basketX + 13, canvas.height - 12);
+
+      // Pohyb a kolize dárků
+      ctx.font = '20px sans-serif';
+      for (let i = gifts.length - 1; i >= 0; i--) {
+        const gift = gifts[i];
+        gift.y += gift.speed;
+        ctx.fillText(gift.char, gift.x, gift.y);
+
+        // Záchyt do košíku
+        const basketY = canvas.height - basketHeight - 10;
+        if (
+          gift.y >= basketY &&
+          gift.y <= basketY + basketHeight + 10 &&
+          gift.x + 20 >= basketX &&
+          gift.x <= basketX + basketWidth
+        ) {
+          gifts.splice(i, 1);
+          caughtCount++;
+          statusText.innerText = `Chyceno: ${caughtCount} / ${TARGET_GIFTS}`;
+
+          if (caughtCount >= TARGET_GIFTS && !isGameOver) {
+            isGameOver = true;
+            statusText.innerText = '🎉 Výborně! Den 1 je splněn!';
+            saveDayDone(1);
+          }
+          continue;
+        }
+
+        // Odstranění spadlých dárků mimo plátno
+        if (gift.y > canvas.height + 20) {
+          gifts.splice(i, 1);
+        }
+      }
+
+      if (!isGameOver) {
+        animationFrameId = requestAnimationFrame(gameLoop);
+      }
+    }
+
+    function saveDayDone(day) {
+      if (!completedDays.includes(day)) {
+        completedDays.push(day);
+        localStorage.setItem('advent_completed', JSON.stringify(completedDays));
+        setTimeout(() => location.reload(), 1500);
+      }
+    }
+  </script>
+</body>
+</html>
