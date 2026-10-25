@@ -68,6 +68,7 @@ window.adventGames[5] = {
     }
 
     // 1. Vytvoření zaručeně rozmotatelných pozic po vlnovkách
+  // 1. Spočítáme 15 pozic ve vlnovce (zaručeně nekřížící se základ)
     const basePositions = [];
     const rows = 5;
     const cols = 3;
@@ -86,19 +87,36 @@ window.adventGames[5] = {
       basePositions.push({ x, y });
     }
 
-    // 2. Prohození pozic tak, aby vznikla křížení, ale rébus měl 100% řešení
-    const perm = [0, 4, 2, 7, 1, 9, 6, 3, 11, 5, 10, 13, 8, 12, 14];
+    // 2. Náhodné zamíchání, dokud nevznikne správně zamotaný rébus (4 až 9 křížení)
     let nodes = [];
-    for (let i = 0; i < TOTAL_NODES; i++) {
-      const pos = basePositions[perm[i]];
-      nodes.push({
-        id: i,
-        color: PALETTE[i % PALETTE.length],
-        x: Math.round(pos.x),
-        y: Math.round(pos.y),
-        radius: 11 // kompaktní velikost pro 15 žárovek
-      });
-    }
+    let attempts = 0;
+
+    do {
+      attempts++;
+      // Vytvoříme náhodnou permutaci indexů
+      let shuffledSlots = Array.from({ length: TOTAL_NODES }, (_, i) => i);
+      for (let i = shuffledSlots.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledSlots[i], shuffledSlots[j]] = [shuffledSlots[j], shuffledSlots[i]];
+      }
+
+      nodes = [];
+      for (let i = 0; i < TOTAL_NODES; i++) {
+        const targetPos = basePositions[shuffledSlots[i]];
+        // Jemný náhodný posun pro přirozenější rozházený vzhled
+        const jitterX = (Math.random() - 0.5) * 14;
+        const jitterY = (Math.random() - 0.5) * 14;
+
+        nodes.push({
+          id: i,
+          color: PALETTE[i % PALETTE.length],
+          x: Math.round(targetPos.x + jitterX),
+          y: Math.round(targetPos.y + jitterY),
+          radius: 11
+        });
+      }
+      // Opakujeme, dokud není křížení dostatečné (nebo po 100 pokusech)
+    } while ((getCrossedEdges().length < 4 || getCrossedEdges().length > 10) && attempts < 100);
 
     // Vektorový součin a kontrola křížení úseček
     function crossProduct(ax, ay, bx, by) {
