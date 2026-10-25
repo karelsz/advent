@@ -112,20 +112,71 @@
     }
 
     /* Modální okno pro Adventní věnec */
+/* Reálný adventní věnec s plamínky */
     .wreath-container {
       display: flex;
       flex-direction: column;
       align-items: center;
       text-align: center;
-      padding: 10px 4px;
+      padding: 6px 4px;
       width: 100%;
+    }
+
+    .wreath-photo-card {
+      position: relative;
+      width: 100%;
+      max-width: 320px;
+      aspect-ratio: 16 / 10;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 2px solid rgba(255, 215, 0, 0.3);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      margin: 8px 0;
+      background: #000;
+    }
+
+    .wreath-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Plamínky nad svíčkami */
+    .wreath-flame {
+      position: absolute;
+      width: 16px;
+      height: 24px;
+      border-radius: 50% 50% 35% 35%;
+      background: radial-gradient(ellipse at bottom, #fff 15%, #ffd43b 50%, #f97316 85%, transparent 100%);
+      box-shadow: 0 0 16px 6px rgba(251, 191, 36, 0.8), 0 0 35px 12px rgba(245, 158, 11, 0.5);
+      transform: translate(-50%, -100%);
+      display: none;
+      pointer-events: none;
+      animation: wreathFlicker 1.1s infinite alternate ease-in-out;
+    }
+
+    .wreath-flame.lit {
+      display: block;
+    }
+
+    /* Pozice 4 plamínků nad 4 svícemi na fotografii */
+    #wf-1 { left: 20%; top: 28%; }
+    #wf-2 { left: 40%; top: 24%; }
+    #wf-3 { left: 63%; top: 22%; }
+    #wf-4 { left: 81%; top: 27%; }
+
+    @keyframes wreathFlicker {
+      0% { transform: translate(-50%, -100%) scale(0.92) rotate(-2deg); opacity: 0.9; }
+      50% { transform: translate(-50%, -100%) scale(1.08) rotate(3deg); opacity: 1; }
+      100% { transform: translate(-50%, -100%) scale(0.96) rotate(-1deg); opacity: 0.95; }
     }
 
     .wreath-desc {
       font-size: 0.95rem;
       color: #cbd5e1;
       line-height: 1.5;
-      margin-top: 8px;
+      margin-top: 6px;
     }
 
     .player-bar {
@@ -423,7 +474,8 @@
     </div>
   </div>
 
-<!-- Modální okno: Adventní věnec -->
+
+<!-- Modální okno: Adventní věnec s fotografií -->
   <div class="modal-overlay" id="wreathModal">
     <div class="modal-card">
       <div class="modal-header">
@@ -431,7 +483,18 @@
         <button class="btn-close" id="closeWreathBtn">✕</button>
       </div>
       <div class="wreath-container">
-        <canvas id="wreathCanvas" width="260" height="260"></canvas>
+        
+        <div class="wreath-photo-card">
+          <!-- Reálná vánoční fotografie adventního věnce se 4 svícemi -->
+          <img class="wreath-img" src="https://images.unsplash.com/photo-1543258103-a62bdc069871?auto=format&fit=crop&w=700&q=80" alt="Adventní věnec">
+          
+          <!-- 4 interaktivní plamínky -->
+          <div class="wreath-flame" id="wf-1"></div>
+          <div class="wreath-flame" id="wf-2"></div>
+          <div class="wreath-flame" id="wf-3"></div>
+          <div class="wreath-flame" id="wf-4"></div>
+        </div>
+
         <div class="wreath-desc" id="wreathDesc"></div>
       </div>
     </div>
@@ -586,91 +649,55 @@
         }
       }
     }
+const wreathModal = document.getElementById('wreathModal');
+    const btnWreath = document.getElementById('btnWreath');
+    const closeWreathBtn = document.getElementById('closeWreathBtn');
+    const wreathDesc = document.getElementById('wreathDesc');
+    const wreathModalTitle = document.getElementById('wreathModalTitle');
 
-    // Vykreslení věnce na canvas (chvojí, mašle a svíčky)
-    function drawWreath(canvasEl, litCount) {
-      const ctx = canvasEl.getContext('2d');
-      const w = canvasEl.width;
-      const h = canvasEl.height;
-      const cx = w / 2;
-      const cy = h / 2;
-
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#061325';
-      ctx.fillRect(0, 0, w, h);
-
-      // Chvojí
-      const ringRadius = 78;
-      for (let i = 0; i < 36; i++) {
-        const angle = (i / 36) * Math.PI * 2;
-        const bx = cx + Math.cos(angle) * ringRadius;
-        const by = cy + Math.sin(angle) * ringRadius;
-        ctx.fillStyle = i % 2 === 0 ? '#15803d' : '#166534';
-        ctx.beginPath();
-        ctx.arc(bx, by, 22, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.fillStyle = '#061325';
-      ctx.beginPath();
-      ctx.arc(cx, cy, 48, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 4 svíčky na věnci
-      const candlePositions = [
-        { x: cx, y: cy - ringRadius },
-        { x: cx + ringRadius, y: cy },
-        { x: cx, y: cy + ringRadius },
-        { x: cx - ringRadius, y: cy }
-      ];
-
-      candlePositions.forEach((pos, idx) => {
-        const isLit = (idx + 1) <= litCount;
-        ctx.fillStyle = isLit ? '#991b1b' : '#334155';
-        ctx.beginPath();
-        ctx.roundRect(pos.x - 9, pos.y - 12, 18, 28, 4);
-        ctx.fill();
-
-        // Plamínek a záře pokud hoří
-        if (isLit) {
-          const glow = ctx.createRadialGradient(pos.x, pos.y - 25, 2, pos.x, pos.y - 25, 28);
-          glow.addColorStop(0, 'rgba(251, 191, 36, 0.7)');
-          glow.addColorStop(1, 'transparent');
-          ctx.fillStyle = glow;
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y - 25, 28, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.fillStyle = '#f97316';
-          ctx.beginPath();
-          ctx.ellipse(pos.x, pos.y - 24, 5, 10, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
-    }
-
-    // Otevření okna věnce s příslušným popisem
     function showWreathModal(customTitle = null) {
       const lit = getLitCandlesCount();
-      wreathModalTitle.innerText = customTitle || "🎄 Adventní věnec";
-      let descText = "";
-      if (lit === 0) descText = "Žádná svíčka ještě nehoří. Splň <strong>1. den</strong>!";
-      else if (lit === 1) descText = "✨ <strong>1. svíčka (Naděje)</strong> hoří! Další se rozzáří po <strong>6. dni</strong>.";
-      else if (lit === 2) descText = "✨✨ <strong>2 svíčky (Mír)</strong> hoří! Třetí se rozzáří po <strong>13. dni</strong>.";
-      else if (lit === 3) descText = "✨✨✨ <strong>3 svíčky (Přátelství)</strong> hoří! Poslední po <strong>20. dni</strong>.";
-      else descText = "🌟🌟🌟🌟 <strong>Všechny 4 svíčky hoří!</strong>";
+      if (wreathModalTitle) wreathModalTitle.innerText = customTitle || "🎄 Adventní věnec";
 
-      wreathDesc.innerHTML = descText;
-      drawWreath(wreathCanvas, lit);
-      wreathModal.classList.add('active');
+      // Zapálení příslušného počtu plamínků na fotografii
+      for (let i = 1; i <= 4; i++) {
+        const flame = document.getElementById(`wf-${i}`);
+        if (flame) {
+          if (i <= lit) {
+            flame.classList.add('lit');
+          } else {
+            flame.classList.remove('lit');
+          }
+        }
+      }
+
+      let descText = "";
+      if (lit === 0) {
+        descText = "Zatím žádná svíce nehoří. Splň <strong>1. den</strong> a zažehneš první adventní plamen!";
+      } else if (lit === 1) {
+        descText = "✨ <strong>1. svíce (Naděje)</strong> plápolá! Další se rozzáří po splnění <strong>6. dne</strong> (2. adventní neděle).";
+      } else if (lit === 2) {
+        descText = "✨✨ <strong>2 svíce (Víra)</strong> plápolají! Třetí se rozzáří po splnění <strong>13. dne</strong> (3. adventní neděle).";
+      } else if (lit === 3) {
+        descText = "✨✨✨ <strong>3 svíce (Radost)</strong> plápolají! Poslední se zažehne po splnění <strong>20. dne</strong> (4. adventní neděle).";
+      } else {
+        descText = "🌟🌟🌟🌟 <strong>3 svíce (Pokoj)!</strong> Celý věnec září a Vánoce jsou tady!";
+      }
+
+      if (wreathDesc) wreathDesc.innerHTML = descText;
+      if (wreathModal) wreathModal.classList.add('active');
     }
+
+    if (btnWreath) btnWreath.addEventListener('click', () => showWreathModal());
+    if (closeWreathBtn) closeWreathBtn.addEventListener('click', () => wreathModal.classList.remove('active'));
 
     btnWreath.addEventListener('click', () => showWreathModal());
     closeWreathBtn.addEventListener('click', () => wreathModal.classList.remove('active'));
     
     // 4. Mřížka kalendáře
     const TOTAL_DAYS = 24;
-    const completedDays = JSON.parse(localStorage.getItem('advent_completed') || '[]');
+    //const completedDays = JSON.parse(localStorage.getItem('advent_completed') || '[]');
+    let completedDays = [];
     let currentGame = null;
     let activeDayNumber = null;
 
@@ -835,15 +862,16 @@ startGameBtn.addEventListener('click', () => {
       statusText.innerText = "Hra běží...";
 
       // 4. Nastartujeme hru
-      try {
+     try {
         currentGame.start(canvas, statusText, (finalScore) => {
-          if (!completedDays.includes(activeDayNumber)) {
+          const wasCompletedBefore = completedDays.includes(activeDayNumber);
+          if (!wasCompletedBefore) {
             completedDays.push(activeDayNumber);
             localStorage.setItem('advent_completed', JSON.stringify(completedDays));
           }
           renderCalendar();
 
-// Pokud právě splnil den se svíčkou (1, 6, 13, 20), po chvilce slavnostně ukážeme věnec!
+          // Pokud právě splnil den se svíčkou (1, 6, 13, 20), po chvilce ukážeme věnec
           const candleDays = [1, 6, 13, 20];
           if (!wasCompletedBefore && candleDays.includes(activeDayNumber)) {
             setTimeout(() => {
