@@ -1,36 +1,49 @@
-// games/day2.js - Minihra: Vánoční pexeso
+// games/day2.js - Minihra: České vánoční pexeso (4 sloupce x 5 řádků = 20 karet)
 window.adventGames = window.adventGames || {};
 
 window.adventGames[2] = {
   title: "Vánoční pexeso",
-  instructions: "Najdi všechny 3 dvojice symbolů!",
+  instructions: "Najdi všech 10 dvojic vánočních symbolů!",
 
   start: function(canvas, statusText, onComplete) {
     const ctx = canvas.getContext('2d');
-    statusText.innerText = "Najdi všechny 3 dvojice!";
 
-    // Ikony pro pexeso (3 dvojice = 6 karet)
-    const icons = ['🎄', '⛄', '🔔', '🎄', '⛄', '🔔'];
-    // Náhodné zamíchání
-    icons.sort(() => Math.random() - 0.5);
+    // 10 vybraných motivů (vytvoří 10 dvojic = 20 karet)
+    const baseIcons = [
+      { icon: '🎄', name: 'Stromeček' },
+      { icon: '🐟', name: 'Kapr' },
+      { icon: '✨', name: 'Zlaté prasátko' },
+      { icon: '☄️', name: 'Betlémská hvězda' },
+      { icon: '🍞', name: 'Vánočka' },
+      { icon: '🍎', name: 'Jablko s hvězdou' },
+      { icon: '🕯️', name: 'Ořechová lodička' },
+      { icon: '🌿', name: 'Jmelí' },
+      { icon: '🍪', name: 'Perníček / Cukroví' },
+      { icon: '🐶', name: 'Border kolie' }
+    ];
 
-    // Mřížka 2 sloupce x 3 řádky
-    const cols = 2;
-    const rows = 3;
-    const cardW = 120;
-    const cardH = 90;
-    const gapX = 25;
-    const gapY = 25;
-    const startX = (canvas.width - (cols * cardW + gapX)) / 2;
-    const startY = 35;
+    // Zdvojení na páry (celkem 20 karet) a náhodné zamíchání
+    let deck = [...baseIcons, ...baseIcons];
+    deck.sort(() => Math.random() - 0.5);
+
+    // Nastavení mřížky 4 sloupce x 5 řádků pro plátno 320 x 400
+    const cols = 4;
+    const rows = 5;
+    const cardW = 66;
+    const cardH = 66;
+    const gapX = 8;
+    const gapY = 8;
+    const startX = (canvas.width - (cols * cardW + (cols - 1) * gapX)) / 2;
+    const startY = 16;
 
     let cards = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 20; i++) {
       const c = i % cols;
       const r = Math.floor(i / cols);
       cards.push({
         id: i,
-        val: icons[i],
+        val: deck[i].icon,
+        label: deck[i].name,
         x: startX + c * (cardW + gapX),
         y: startY + r * (cardH + gapY),
         w: cardW,
@@ -43,44 +56,51 @@ window.adventGames[2] = {
     let flippedCards = [];
     let lockBoard = false;
     let matchedPairs = 0;
+    const TOTAL_PAIRS = 10;
+
+    statusText.innerText = `Najdi všech 10 dvojic! Splněno: 0 / ${TOTAL_PAIRS}`;
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       cards.forEach(card => {
         if (card.matched) {
-          // Uhodnutá karta
-          ctx.fillStyle = '#2f9e44';
-          ctx.strokeStyle = '#51cf66';
+          // Správně uhodnutá dvojice (zelená)
+          ctx.fillStyle = '#1e3a24';
+          ctx.strokeStyle = '#2f9e44';
         } else if (card.flipped) {
-          // Otočená lícem nahoru
+          // Právě otočená karta (modrá)
           ctx.fillStyle = '#1e293b';
           ctx.strokeStyle = '#38bdf8';
         } else {
-          // Rubem nahoru
-          ctx.fillStyle = '#334155';
-          ctx.strokeStyle = '#64748b';
+          // Rubem nahoru (tmavá vánoční červená)
+          ctx.fillStyle = '#450a0a';
+          ctx.strokeStyle = '#b91c1c';
         }
 
-        // Vykreslení obdélníku karty
-        ctx.lineWidth = 3;
+        // Vykreslení těla karty
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.roundRect(card.x, card.y, card.w, card.h, 10);
+        ctx.roundRect(card.x, card.y, card.w, card.h, 8);
         ctx.fill();
         ctx.stroke();
 
-        // Obsah karty
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
         if (card.flipped || card.matched) {
-          ctx.font = '40px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(card.val, card.x + card.w / 2, card.y + card.h / 2);
-        } else {
-          ctx.fillStyle = '#94a3b8';
+          // Líc karty: motiv a malý popis
           ctx.font = '28px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('❓', card.x + card.w / 2, card.y + card.h / 2);
+          ctx.fillText(card.val, card.x + card.w / 2, card.y + card.h / 2 - 4);
+          
+          ctx.font = '9px sans-serif';
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillText(card.label.slice(0, 11), card.x + card.w / 2, card.y + card.h - 10);
+        } else {
+          // Rub karty: vločka
+          ctx.fillStyle = '#f87171';
+          ctx.font = '22px sans-serif';
+          ctx.fillText('❄️', card.x + card.w / 2, card.y + card.h / 2);
         }
       });
     }
@@ -116,10 +136,11 @@ window.adventGames[2] = {
           matchedPairs++;
           flippedCards = [];
           lockBoard = false;
+          statusText.innerText = `Nalezeno: ${matchedPairs} / ${TOTAL_PAIRS} dvojic!`;
           draw();
 
-          if (matchedPairs === 3) {
-            statusText.innerText = '🎉 Skvělá paměť! Den 2 je splněn!';
+          if (matchedPairs === TOTAL_PAIRS) {
+            statusText.innerText = '🎉 Fantastické! Všech 10 dvojic nalezeno!';
             onComplete();
           }
         } else {
@@ -129,7 +150,7 @@ window.adventGames[2] = {
             flippedCards = [];
             lockBoard = false;
             draw();
-          }, 900);
+          }, 850);
         }
       }
     }
