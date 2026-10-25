@@ -89,6 +89,8 @@
       max-width: 480px;
     }
 
+
+
     .door {
       aspect-ratio: 1;
       border-radius: 12px;
@@ -115,8 +117,24 @@
       color: #fff;
     }
 
-    .door.done {
+     .door.done {
       background: linear-gradient(135deg, #2f9e44, var(--card-done));
+    }
+
+    /* Zlatý rámeček a záře, pokud držíš globální rekord dne */
+    .door.champion {
+      border: 3px solid #ffd43b !important;
+      box-shadow: 0 0 16px rgba(255, 212, 59, 0.75), inset 0 0 8px rgba(255, 212, 59, 0.4) !important;
+      position: relative;
+    }
+
+    .door.champion::after {
+      content: '👑';
+      position: absolute;
+      top: -8px;
+      right: -6px;
+      font-size: 1rem;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));
     }
 
     .door .badge {
@@ -176,11 +194,64 @@
       cursor: pointer;
     }
 
+    /* Obrazovka s instrukcemi před hrou */
+    .intro-screen {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 20px 10px;
+      gap: 16px;
+    }
+
+    .intro-icon {
+      font-size: 3.5rem;
+      line-height: 1;
+    }
+
+    .intro-box {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      width: 100%;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: #e2e8f0;
+    }
+
+    .intro-records {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .btn-start-game {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #ffffff;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      box-shadow: 0 4px 12px rgba(34, 197, 94, 0.35);
+      transition: transform 0.1s ease;
+    }
+
+    .btn-start-game:active {
+      transform: scale(0.98);
+    }
+
     canvas {
       background: #020617;
       border-radius: 8px;
       border: 1px solid #1e293b;
-      display: block;
+      display: none; /* Skryté dokud hráč neklikne na Start */
       width: 100%;
       touch-action: none;
     }
@@ -190,6 +261,7 @@
       font-size: 0.95rem;
       text-align: center;
       min-height: 24px;
+      display: none; /* Skryté dokud hra neběží */
     }
 
     .stats-table {
@@ -230,8 +302,18 @@
         <h2 id="modalTitle">Minihra</h2>
         <button class="btn-close" id="closeGameBtn">✕</button>
       </div>
+
+      <!-- Úvodní obrazovka s instrukcemi -->
+      <div class="intro-screen" id="introScreen">
+        <div class="intro-icon" id="introIcon">🎁</div>
+        <div class="intro-box" id="introInstructions">Načítám instrukce...</div>
+        <div class="intro-records" id="introRecords"></div>
+        <button class="btn-start-game" id="startGameBtn">Spustit hru 🎮</button>
+      </div>
+
+      <!-- Samotná herní plocha -->
       <canvas id="gameCanvas" width="320" height="400"></canvas>
-      <div class="game-status" id="gameStatus">Načítám...</div>
+      <div class="game-status" id="gameStatus"></div>
     </div>
   </div>
 
@@ -243,15 +325,15 @@
         <button class="btn-close" id="closeStatsBtn">✕</button>
       </div>
       <div style="width: 100%;" id="statsContent">
-        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 10px;">Načítám data z tabulky...</p>
+        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 10px;">Načítám data ze Supabase...</p>
       </div>
     </div>
   </div>
 
   <script>
     // 1. Supabase konfigurace
-    const SUPABASE_URL = 'https://vzayvjzvugrwvfifznnd.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6YXl2anp2dWdyd3ZmaWZ6bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4OTQ0NDcsImV4cCI6MjEwODQ3MDQ0N30.ZzLPVCPGyuWG3-sH1WIC4H3ZniV3JeZT2K9VuYLhmGg';
+    const SUPABASE_URL = 'https://vzayvjzvugrwvfifznnd.supabase.com';
+    const SUPABASE_KEY = 'sb_publishable_h4amHgFF5tBzjODw-M6jfw_oU8rwfHs';
     const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
     // 2. Správa hráče
@@ -268,10 +350,11 @@
         playerName = newName.trim();
         localStorage.setItem('advent_player', playerName);
         document.getElementById('playerNameTag').innerText = playerName;
+        renderCalendar(); // <-- TENTO ŘÁDEK SEM PŘIDEJ
       }
     }
 
-    // 3. Univerzální rekordový engine řízený souborem games/config.js
+    // 3. Univerzální rekordový engine řízený games/config.js
     window.adventScores = {
       isAscending: function(day) {
         const conf = window.adventConfig && window.adventConfig[day];
@@ -312,7 +395,7 @@
             { day_number: day, player_name: playerName, score: score }
           ]);
         } catch (e) {
-          console.warn('Chyba zápisu do tabulky:', e);
+          console.warn('Chyba zápisu do Supabase:', e);
         }
       },
 
@@ -338,6 +421,7 @@
     const TOTAL_DAYS = 24;
     const completedDays = JSON.parse(localStorage.getItem('advent_completed') || '[]');
     let currentGame = null;
+    let activeDayNumber = null;
 
     const grid = document.getElementById('calendar');
     const gameModal = document.getElementById('gameModal');
@@ -346,7 +430,41 @@
     const statusText = document.getElementById('gameStatus');
     const modalTitle = document.getElementById('modalTitle');
 
-    function renderCalendar() {
+    // Elementy úvodní obrazovky
+    const introScreen = document.getElementById('introScreen');
+    const introInstructions = document.getElementById('introInstructions');
+    const introRecords = document.getElementById('introRecords');
+    const startGameBtn = document.getElementById('startGameBtn');
+
+async function renderCalendar() {
+      // 1. Zjistíme, u kterých dní drží aktuální hráč globální rekord
+      const championDays = new Set();
+      if (supabaseClient) {
+        try {
+          const { data } = await supabaseClient
+            .from('leaderboard')
+            .select('day_number, player_name, score');
+
+          if (data) {
+            const activeDays = Object.keys(window.adventConfig || {}).map(Number);
+            activeDays.forEach(d => {
+              const asc = window.adventScores.isAscending(d);
+              const dayScores = data.filter(item => item.day_number === d);
+              if (dayScores.length > 0) {
+                dayScores.sort((a, b) => asc ? a.score - b.score : b.score - a.score);
+                // Pokud je na 1. místě aktuální hráč
+                if (dayScores[0].player_name.trim().toLowerCase() === playerName.trim().toLowerCase()) {
+                  championDays.add(d);
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Nelze načíst šampiony:', e);
+        }
+      }
+
+      // 2. Vykreslení dlaždic
       grid.innerHTML = '';
       for (let day = 1; day <= TOTAL_DAYS; day++) {
         const door = document.createElement('div');
@@ -354,10 +472,16 @@
 
         const isUnlocked = window.adventConfig && window.adventConfig[day] !== undefined;
         const isDone = completedDays.includes(day);
+        const isChamp = championDays.has(day);
+
+        // Pokud hráč drží globální rekord, přidáme zlatý styl
+        if (isChamp) {
+          door.classList.add('champion');
+        }
 
         if (isDone) {
           door.classList.add('done');
-          door.innerHTML = `<span>${day}</span><span class="badge">⭐</span>`;
+          door.innerHTML = `<span>${day}</span><span class="badge">${isChamp ? '🏆' : '⭐'}</span>`;
         } else if (isUnlocked) {
           door.classList.add('unlocked');
           door.innerHTML = `<span>${day}</span><span class="badge">🎁</span>`;
@@ -371,32 +495,48 @@
             alert("Tento den ještě skřítci v dílně připravují!");
             return;
           }
-          loadAndOpenGame(day);
+          prepareGameIntro(day);
         });
 
         grid.appendChild(door);
       }
     }
 
-    function loadAndOpenGame(day) {
+    // Příprava meziobrazovky před startem
+    async function prepareGameIntro(day) {
+      activeDayNumber = day;
       gameModal.classList.add('active');
+
+      // Zobrazíme intro, skryjeme canvas i status
+      introScreen.style.display = 'flex';
+      canvas.style.display = 'none';
+      statusText.style.display = 'none';
+
       modalTitle.innerText = `Den ${day}`;
-      statusText.innerText = "Načítám hru...";
+      introInstructions.innerText = "Načítám pokyny ke hře...";
+      introRecords.innerHTML = "";
 
       const scriptId = `game-script-${day}`;
       let script = document.getElementById(scriptId);
 
-      const runGame = () => {
+      const showIntroDetails = async () => {
         if (window.adventGames && window.adventGames[day]) {
           currentGame = window.adventGames[day];
           modalTitle.innerText = `Den ${day}: ${currentGame.title}`;
-          currentGame.start(canvas, statusText, (finalScore) => {
-            if (!completedDays.includes(day)) {
-              completedDays.push(day);
-              localStorage.setItem('advent_completed', JSON.stringify(completedDays));
-              renderCalendar();
-            }
-          });
+          introInstructions.innerText = currentGame.instructions || "Připrav se na hru!";
+
+          // Zobrazení rekordů na úvodní obrazovce
+          const unit = window.adventScores.getUnit(day);
+          const myBest = window.adventScores.getPersonalBest(day);
+          const myBestText = myBest !== null ? `${myBest}${unit}` : "Zatím žádný";
+
+          introRecords.innerHTML = `<div>Tvůj osobní rekord: <strong style="color: #ffd43b;">${myBestText}</strong></div>`;
+
+          // Načtení globálního rekordu
+          const globalRec = await window.adventScores.getGlobalRecord(day);
+          if (globalRec) {
+            introRecords.innerHTML += `<div>Rekord drží <strong>${globalRec.player_name}</strong> (${globalRec.score}${unit})</div>`;
+          }
         }
       };
 
@@ -404,19 +544,43 @@
         script = document.createElement('script');
         script.id = scriptId;
         script.src = `games/day${day}.js`;
-        script.onload = runGame;
+        script.onload = showIntroDetails;
         document.body.appendChild(script);
       } else {
-        runGame();
+        showIntroDetails();
       }
     }
+
+    // Samotné spuštění po odkliknutí tlačítka
+    startGameBtn.addEventListener('click', () => {
+      if (!currentGame) return;
+
+      // Skryjeme intro, zobrazíme canvas i stavový řádek
+      introScreen.style.display = 'none';
+      canvas.style.display = 'block';
+      statusText.style.display = 'block';
+
+      // Odstartujeme hru
+currentGame.start(canvas, statusText, (finalScore) => { 
+        if (!completedDays.includes(activeDayNumber)) {
+          completedDays.push(activeDayNumber);
+          localStorage.setItem('advent_completed', JSON.stringify(completedDays));
+        }
+        // Překreslí kalendář vždy (ověří nového šampiona dne)
+        renderCalendar();
+      });
+    });
 
     closeGameBtn.addEventListener('click', () => {
       gameModal.classList.remove('active');
       if (currentGame && currentGame.stop) currentGame.stop();
+
+      // Pokud měla hra externí ovládací prvky (např. slider u Dne 1), schováme je
+      const sContainer = document.getElementById('day1-slider-wrap');
+      if (sContainer) sContainer.style.display = 'none';
     });
 
-    // 5. Automatická síň slávy pro všechny dny definované v config.js
+    // 5. Automatická síň slávy
     const statsModal = document.getElementById('statsModal');
     const btnStats = document.getElementById('btnStats');
     const closeStatsBtn = document.getElementById('closeStatsBtn');
@@ -424,7 +588,7 @@
 
     btnStats.addEventListener('click', async () => {
       statsModal.classList.add('active');
-      statsContent.innerHTML = `<p style="color: #94a3b8; font-size: 0.9rem;">Načítám data z tabulky...</p>`;
+      statsContent.innerHTML = `<p style="color: #94a3b8; font-size: 0.9rem;">Načítám data ze Supabase...</p>`;
 
       let rowsHtml = '';
       if (supabaseClient) {
