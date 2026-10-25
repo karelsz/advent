@@ -34,6 +34,11 @@ window.adventConfig = {
     title: "Šplhání po stromečku",
     order: "asc",
     unit: "s"
+  },
+  8: {
+    title: "Sestřelování rampouchů",
+    order: "desc",
+    unit: " b."
   }
 
 };

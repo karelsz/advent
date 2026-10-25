@@ -506,6 +506,27 @@
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6YXl2anp2dWdyd3ZmaWZ6bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4OTQ0NDcsImV4cCI6MjEwODQ3MDQ0N30.ZzLPVCPGyuWG3-sH1WIC4H3ZniV3JeZT2K9VuYLhmGg';
     const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
+
+    // Testovací / Vývojářský režim
+    let devModeUnlocked = localStorage.getItem('advent_dev_unlock') === 'true';
+
+    function getMaxAllowedDay() {
+      // 1. Odemčeno, pokud je aktivní dev režim nebo jméno hráče je 'tester' či 'admin'
+      const cleanName = (playerName || '').trim().toLowerCase();
+      if (devModeUnlocked || cleanName === 'tester' || cleanName === 'admin') {
+        return 24;
+      }
+
+      // 2. Kontrola reálného data v prosinci (měsíc 11 = prosinec)
+      const now = new Date();
+      if (now.getMonth() === 11) {
+        return now.getDate();
+      }
+
+      // Mimo prosinec je aktuální den 0
+      return 0;
+    }
+
  // 2. Správa hráče se Supabase ověřením existence
     let playerName = localStorage.getItem('advent_player') || '';
 
@@ -761,13 +782,18 @@ async function renderCalendar() {
       // Aktualizujeme svíčky v záhlaví podle sloučeného stavu
       updateHeaderCandles();
 
+      const maxAllowedDay = getMaxAllowedDay();
       grid.innerHTML = '';
+
       for (let day = 1; day <= TOTAL_DAYS; day++) {
         const door = document.createElement('div');
         door.className = 'door';
 
-        const isUnlocked = window.adventConfig && window.adventConfig[day] !== undefined;
-        const isDone = completedDays.includes(day) || serverCompletedDays.has(day);
+        const isConfigured = window.adventConfig && window.adventConfig[day] !== undefined;
+        const isTimeUnlocked = day <= maxAllowedDay;
+        // Odemčeno pouze tehdy, pokud je hra naprogramována A ZÁROVEŇ už nadešel její den v prosinci
+        const isUnlocked = isConfigured && isTimeUnlocked;
+        const isDone = completedDays.includes(day);
         const isChamp = championDays.has(day);
 
         if (isChamp) {
@@ -786,15 +812,39 @@ async function renderCalendar() {
         }
 
         door.addEventListener('click', () => {
-          if (!isUnlocked && !isDone) {
+          if (isDone || isUnlocked) {
+            prepareGameIntro(day);
+          } else if (!isTimeUnlocked) {
+            alert(`Tento den se otevře až ${day}. prosince! 🎅`);
+          } else {
             alert("Tento den ještě skřítci v dílně připravují!");
-            return;
           }
-          prepareGameIntro(day);
         });
 
         grid.appendChild(door);
       }
+    } // Konec funkce renderCalendar
+
+    // Tajný přepínač: 3x rychlé kliknutí na nadpis "🎄 Adventní kalendář"
+    const headerTitle = document.querySelector('header h1');
+    let titleClickCount = 0;
+    let titleClickTimer = null;
+
+    if (headerTitle) {
+      headerTitle.style.cursor = 'pointer';
+      headerTitle.addEventListener('click', () => {
+        titleClickCount++;
+        clearTimeout(titleClickTimer);
+        titleClickTimer = setTimeout(() => { titleClickCount = 0; }, 600);
+
+        if (titleClickCount >= 3) {
+          titleClickCount = 0;
+          devModeUnlocked = !devModeUnlocked;
+          localStorage.setItem('advent_dev_unlock', devModeUnlocked);
+          alert(devModeUnlocked ? "🔓 TESTER MÓD ZAPNUT: Všechny dny odemčeny!" : "🔒 TESTER MÓD VYPNUT: Platí reálné datum.");
+          renderCalendar();
+        }
+      });
     }
 
     // Příprava meziobrazovky před startem
