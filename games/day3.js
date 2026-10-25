@@ -44,11 +44,11 @@ window.adventGames[3] = {
       { name: "Autíčko", icon: "🚗" },
       { name: "Vláček", icon: "🚂" },
       { name: "Robot", icon: "🤖" },
-      { name: "Knížka", icon: "📚" }
-      { name: "Brýle", icon: "🕶️" }
-      { name: "Rukavice", icon: "🧤" }
-      { name: "Míč", icon: "⚽" }
-      { name: "Playstation", icon: "🎮" }
+      { name: "Knížka", icon: "📚" },
+      { name: "Brýle", icon: "🕶️" },
+      { name: "Rukavice", icon: "🧤" },
+      { name: "Míč", icon: "⚽" },
+      { name: "Playstation", icon: "🎮" },
       { name: "Brusle", icon: "🎿" }
     ];
 
