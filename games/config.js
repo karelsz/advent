@@ -11,8 +11,8 @@ window.adventConfig = {
     unit: "s"
   },
   3: {
-    title: "Vydrž s baňkami", // Tvoje survival hra!
-    order: "desc",       // Vyšší čas vyhrává (kdo vydrží déle naživu)
-    unit: "s"
+    title: "Balení dárků na čas",
+    order: "desc",
+    unit: " b."
   }
 };
