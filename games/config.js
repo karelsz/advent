@@ -19,5 +19,10 @@ window.adventConfig = {
     title: "Zloděj cukroví",
     order: "desc",
     unit: " b."
+  },
+  5: {
+    title: "Rozmotávání světýlek",
+    order: "asc",
+    unit: "s"
   }
 };
