@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Adventní kalendář</title>
+  <!-- Supabase JS Client a Centrální konfigurace -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="games/config.js"></script>
   <style>
     :root {
       --bg: #0b1a2d;
@@ -36,17 +39,46 @@
 
     header {
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 14px;
+      width: 100%;
+      max-width: 480px;
     }
 
     header h1 {
-      font-size: 1.8rem;
+      font-size: 1.7rem;
       margin-bottom: 4px;
     }
 
-    header p {
-      font-size: 0.95rem;
-      color: #cbd5e1;
+    .player-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 8px 14px;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+
+    .player-tag {
+      cursor: pointer;
+      color: var(--gold);
+      font-weight: bold;
+      text-decoration: underline;
+    }
+
+    .btn-stats {
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
 
     .calendar-grid {
@@ -64,7 +96,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      font-size: 1.4rem;
+      font-size: 1.35rem;
       font-weight: bold;
       border: 2px solid rgba(255, 255, 255, 0.15);
       cursor: pointer;
@@ -121,6 +153,8 @@
       flex-direction: column;
       align-items: center;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      max-height: 90vh;
+      overflow-y: auto;
     }
 
     .modal-header {
@@ -157,36 +191,157 @@
       text-align: center;
       min-height: 24px;
     }
+
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+
+    .stats-table th, .stats-table td {
+      padding: 8px;
+      text-align: left;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .stats-table th {
+      color: #94a3b8;
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 <body>
 
   <header>
     <h1>🎄 Adventní kalendář</h1>
-    <p>Otevírej každý den novou minihru!</p>
+    <div class="player-bar">
+      <div>Hráč: <span class="player-tag" id="playerNameTag" onclick="changePlayerName()">...</span></div>
+      <button class="btn-stats" id="btnStats">🏆 Rekordy</button>
+    </div>
   </header>
 
   <main class="calendar-grid" id="calendar"></main>
 
+  <!-- Modální okno s Minihrou -->
   <div class="modal-overlay" id="gameModal">
     <div class="modal-card">
       <div class="modal-header">
         <h2 id="modalTitle">Minihra</h2>
-        <button class="btn-close" id="closeBtn">✕</button>
+        <button class="btn-close" id="closeGameBtn">✕</button>
       </div>
       <canvas id="gameCanvas" width="320" height="400"></canvas>
       <div class="game-status" id="gameStatus">Načítám...</div>
     </div>
   </div>
 
+  <!-- Modální okno se Síní slávy -->
+  <div class="modal-overlay" id="statsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🏆 Síň slávy a rekordy</h2>
+        <button class="btn-close" id="closeStatsBtn">✕</button>
+      </div>
+      <div style="width: 100%;" id="statsContent">
+        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 10px;">Načítám data z tabulky...</p>
+      </div>
+    </div>
+  </div>
+
   <script>
+    // 1. Supabase konfigurace
+    const SUPABASE_URL = 'https://vzayvjzvugrwvfifznnd.supabase.com';
+    const SUPABASE_KEY = 'sb_publishable_h4amHgFF5tBzjODw-M6jfw_oU8rwfHs';
+    const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+    // 2. Správa hráče
+    let playerName = localStorage.getItem('advent_player') || '';
+    if (!playerName) {
+      playerName = prompt('Jak se jmenuješ? (Jméno do tabulky rekordů)', 'Ježíšek') || 'Hráč';
+      localStorage.setItem('advent_player', playerName.trim());
+    }
+    document.getElementById('playerNameTag').innerText = playerName;
+
+    function changePlayerName() {
+      const newName = prompt('Změnit jméno hráče:', playerName);
+      if (newName && newName.trim()) {
+        playerName = newName.trim();
+        localStorage.setItem('advent_player', playerName);
+        document.getElementById('playerNameTag').innerText = playerName;
+      }
+    }
+
+    // 3. Univerzální rekordový engine řízený souborem games/config.js
+    window.adventScores = {
+      isAscending: function(day) {
+        const conf = window.adventConfig && window.adventConfig[day];
+        return conf ? conf.order === 'asc' : false;
+      },
+
+      getUnit: function(day) {
+        const conf = window.adventConfig && window.adventConfig[day];
+        return conf ? conf.unit : '';
+      },
+
+      savePersonalScore: function(day, score) {
+        const key = `advent_best_day_${day}_${playerName}`;
+        const currentBest = localStorage.getItem(key);
+        const asc = this.isAscending(day);
+
+        if (currentBest === null) {
+          localStorage.setItem(key, score);
+        } else {
+          const prev = parseInt(currentBest, 10);
+          if (asc ? score < prev : score > prev) {
+            localStorage.setItem(key, score);
+          }
+        }
+      },
+
+      getPersonalBest: function(day) {
+        const key = `advent_best_day_${day}_${playerName}`;
+        const val = localStorage.getItem(key);
+        return val !== null ? parseInt(val, 10) : null;
+      },
+
+      recordScoreOnline: async function(day, score) {
+        this.savePersonalScore(day, score);
+        if (!supabaseClient) return;
+        try {
+          await supabaseClient.from('leaderboard').insert([
+            { day_number: day, player_name: playerName, score: score }
+          ]);
+        } catch (e) {
+          console.warn('Chyba zápisu do tabulky:', e);
+        }
+      },
+
+      getGlobalRecord: async function(day) {
+        if (!supabaseClient) return null;
+        try {
+          const asc = this.isAscending(day);
+          const { data, error } = await supabaseClient
+            .from('leaderboard')
+            .select('player_name, score')
+            .eq('day_number', day)
+            .order('score', { ascending: asc })
+            .limit(1);
+          if (!error && data && data.length > 0) return data[0];
+        } catch (e) {
+          console.warn(e);
+        }
+        return null;
+      }
+    };
+
+    // 4. Mřížka kalendáře
     const TOTAL_DAYS = 24;
     const completedDays = JSON.parse(localStorage.getItem('advent_completed') || '[]');
     let currentGame = null;
 
     const grid = document.getElementById('calendar');
-    const modal = document.getElementById('gameModal');
-    const closeBtn = document.getElementById('closeBtn');
+    const gameModal = document.getElementById('gameModal');
+    const closeGameBtn = document.getElementById('closeGameBtn');
     const canvas = document.getElementById('gameCanvas');
     const statusText = document.getElementById('gameStatus');
     const modalTitle = document.getElementById('modalTitle');
@@ -197,8 +352,7 @@
         const door = document.createElement('div');
         door.className = 'door';
 
-        // Pro testování jsou zatím otevřené dny 1 a 2
-        const isUnlocked = (day <= 2);
+        const isUnlocked = window.adventConfig && window.adventConfig[day] !== undefined;
         const isDone = completedDays.includes(day);
 
         if (isDone) {
@@ -214,7 +368,7 @@
 
         door.addEventListener('click', () => {
           if (!isUnlocked && !isDone) {
-            alert("Tento den je ještě schovaný pod sněhem!");
+            alert("Tento den ještě skřítci v dílně připravují!");
             return;
           }
           loadAndOpenGame(day);
@@ -224,9 +378,8 @@
       }
     }
 
-    // Dynamické načtení hry ze souboru games/dayX.js
     function loadAndOpenGame(day) {
-      modal.classList.add('active');
+      gameModal.classList.add('active');
       modalTitle.innerText = `Den ${day}`;
       statusText.innerText = "Načítám hru...";
 
@@ -237,15 +390,13 @@
         if (window.adventGames && window.adventGames[day]) {
           currentGame = window.adventGames[day];
           modalTitle.innerText = `Den ${day}: ${currentGame.title}`;
-          currentGame.start(canvas, statusText, () => {
+          currentGame.start(canvas, statusText, (finalScore) => {
             if (!completedDays.includes(day)) {
               completedDays.push(day);
               localStorage.setItem('advent_completed', JSON.stringify(completedDays));
               renderCalendar();
             }
           });
-        } else {
-          statusText.innerText = "Tato hra se ještě připravuje!";
         }
       };
 
@@ -254,20 +405,80 @@
         script.id = scriptId;
         script.src = `games/day${day}.js`;
         script.onload = runGame;
-        script.onerror = () => {
-          statusText.innerText = "Tato hra se ještě dokončuje v dílně skřítků!";
-        };
         document.body.appendChild(script);
       } else {
         runGame();
       }
     }
 
-    closeBtn.addEventListener('click', () => {
-      modal.classList.remove('active');
-      if (currentGame && currentGame.stop) {
-        currentGame.stop();
+    closeGameBtn.addEventListener('click', () => {
+      gameModal.classList.remove('active');
+      if (currentGame && currentGame.stop) currentGame.stop();
+    });
+
+    // 5. Automatická síň slávy pro všechny dny definované v config.js
+    const statsModal = document.getElementById('statsModal');
+    const btnStats = document.getElementById('btnStats');
+    const closeStatsBtn = document.getElementById('closeStatsBtn');
+    const statsContent = document.getElementById('statsContent');
+
+    btnStats.addEventListener('click', async () => {
+      statsModal.classList.add('active');
+      statsContent.innerHTML = `<p style="color: #94a3b8; font-size: 0.9rem;">Načítám data z tabulky...</p>`;
+
+      let rowsHtml = '';
+      if (supabaseClient) {
+        const { data } = await supabaseClient
+          .from('leaderboard')
+          .select('day_number, player_name, score');
+
+        const activeDays = Object.keys(window.adventConfig || {}).map(Number);
+
+        activeDays.forEach(d => {
+          const asc = window.adventScores.isAscending(d);
+          const unit = window.adventScores.getUnit(d);
+          const myBest = window.adventScores.getPersonalBest(d);
+
+          let top = null;
+          if (data) {
+            const dayScores = data.filter(item => item.day_number === d);
+            if (dayScores.length > 0) {
+              dayScores.sort((a, b) => asc ? a.score - b.score : b.score - a.score);
+              top = dayScores[0];
+            }
+          }
+
+          const myBestLabel = myBest !== null ? `${myBest}${unit}` : '-';
+          const topLabel = top ? `${top.player_name} (${top.score}${unit})` : 'Zatím nehráno';
+
+          rowsHtml += `
+            <tr>
+              <td><strong>Den ${d}</strong></td>
+              <td style="color: #ffd43b;">${myBestLabel}</td>
+              <td style="color: #38bdf8;">${topLabel}</td>
+            </tr>
+          `;
+        });
       }
+
+      statsContent.innerHTML = `
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>Den</th>
+              <th>Můj rekord</th>
+              <th>Rekord dne (Všichni)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="3">Žádná data</td></tr>'}
+          </tbody>
+        </table>
+      `;
+    });
+
+    closeStatsBtn.addEventListener('click', () => {
+      statsModal.classList.remove('active');
     });
 
     renderCalendar();
