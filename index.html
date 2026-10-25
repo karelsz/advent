@@ -69,7 +69,6 @@
       border: 2px solid rgba(255, 255, 255, 0.15);
       cursor: pointer;
       box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-      position: relative;
     }
 
     .door.locked {
@@ -93,7 +92,6 @@
       margin-top: 2px;
     }
 
-    /* Modální okno s hrou */
     .modal-overlay {
       position: fixed;
       top: 0;
@@ -173,173 +171,106 @@
   <div class="modal-overlay" id="gameModal">
     <div class="modal-card">
       <div class="modal-header">
-        <h2 id="modalTitle">Den 1</h2>
+        <h2 id="modalTitle">Minihra</h2>
         <button class="btn-close" id="closeBtn">✕</button>
       </div>
       <canvas id="gameCanvas" width="320" height="400"></canvas>
-      <div class="game-status" id="gameStatus">Tažením prstu chytej padající dárky!</div>
+      <div class="game-status" id="gameStatus">Načítám...</div>
     </div>
   </div>
 
   <script>
     const TOTAL_DAYS = 24;
     const completedDays = JSON.parse(localStorage.getItem('advent_completed') || '[]');
+    let currentGame = null;
 
-    // Vykreslení kalendáře
     const grid = document.getElementById('calendar');
-
-    for (let day = 1; day <= TOTAL_DAYS; day++) {
-      const door = document.createElement('div');
-      door.className = 'door';
-
-      // Pro testování je zatím odemčen pouze Den 1
-      const isUnlocked = (day === 1);
-      const isDone = completedDays.includes(day);
-
-      if (isDone) {
-        door.classList.add('done');
-        door.innerHTML = `<span>${day}</span><span class="badge">⭐</span>`;
-      } else if (isUnlocked) {
-        door.classList.add('unlocked');
-        door.innerHTML = `<span>${day}</span><span class="badge">🎁</span>`;
-      } else {
-        door.classList.add('locked');
-        door.innerHTML = `<span>${day}</span><span class="badge">🔒</span>`;
-      }
-
-      door.addEventListener('click', () => {
-        if (!isUnlocked && !isDone) {
-          alert("Tento den je ještě schovaný pod sněhem!");
-          return;
-        }
-        openGame(day);
-      });
-
-      grid.appendChild(door);
-    }
-
-    // Obsluha modálního okna
     const modal = document.getElementById('gameModal');
     const closeBtn = document.getElementById('closeBtn');
+    const canvas = document.getElementById('gameCanvas');
+    const statusText = document.getElementById('gameStatus');
+    const modalTitle = document.getElementById('modalTitle');
+
+    function renderCalendar() {
+      grid.innerHTML = '';
+      for (let day = 1; day <= TOTAL_DAYS; day++) {
+        const door = document.createElement('div');
+        door.className = 'door';
+
+        // Pro testování jsou zatím otevřené dny 1 a 2
+        const isUnlocked = (day <= 2);
+        const isDone = completedDays.includes(day);
+
+        if (isDone) {
+          door.classList.add('done');
+          door.innerHTML = `<span>${day}</span><span class="badge">⭐</span>`;
+        } else if (isUnlocked) {
+          door.classList.add('unlocked');
+          door.innerHTML = `<span>${day}</span><span class="badge">🎁</span>`;
+        } else {
+          door.classList.add('locked');
+          door.innerHTML = `<span>${day}</span><span class="badge">🔒</span>`;
+        }
+
+        door.addEventListener('click', () => {
+          if (!isUnlocked && !isDone) {
+            alert("Tento den je ještě schovaný pod sněhem!");
+            return;
+          }
+          loadAndOpenGame(day);
+        });
+
+        grid.appendChild(door);
+      }
+    }
+
+    // Dynamické načtení hry ze souboru games/dayX.js
+    function loadAndOpenGame(day) {
+      modal.classList.add('active');
+      modalTitle.innerText = `Den ${day}`;
+      statusText.innerText = "Načítám hru...";
+
+      const scriptId = `game-script-${day}`;
+      let script = document.getElementById(scriptId);
+
+      const runGame = () => {
+        if (window.adventGames && window.adventGames[day]) {
+          currentGame = window.adventGames[day];
+          modalTitle.innerText = `Den ${day}: ${currentGame.title}`;
+          currentGame.start(canvas, statusText, () => {
+            if (!completedDays.includes(day)) {
+              completedDays.push(day);
+              localStorage.setItem('advent_completed', JSON.stringify(completedDays));
+              renderCalendar();
+            }
+          });
+        } else {
+          statusText.innerText = "Tato hra se ještě připravuje!";
+        }
+      };
+
+      if (!script) {
+        script = document.createElement('script');
+        script.id = scriptId;
+        script.src = `games/day${day}.js`;
+        script.onload = runGame;
+        script.onerror = () => {
+          statusText.innerText = "Tato hra se ještě dokončuje v dílně skřítků!";
+        };
+        document.body.appendChild(script);
+      } else {
+        runGame();
+      }
+    }
 
     closeBtn.addEventListener('click', () => {
       modal.classList.remove('active');
-      stopGame();
+      if (currentGame && currentGame.stop) {
+        currentGame.stop();
+      }
     });
 
-    function openGame(day) {
-      document.getElementById('modalTitle').innerText = `Den ${day}: Chytání dárků`;
-      modal.classList.add('active');
-      startGameDay1();
-    }
-
-    // Minihra pro Den 1: Chytání dárků
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const statusText = document.getElementById('gameStatus');
-
-    let animationFrameId;
-    let basketX = 130;
-    const basketWidth = 60;
-    const basketHeight = 16;
-    let gifts = [];
-    let caughtCount = 0;
-    const TARGET_GIFTS = 7;
-    let isGameOver = false;
-
-    function moveBasket(clientX) {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const x = (clientX - rect.left) * scaleX;
-      basketX = Math.max(0, Math.min(canvas.width - basketWidth, x - basketWidth / 2));
-    }
-
-    canvas.addEventListener('touchmove', (e) => {
-      moveBasket(e.touches[0].clientX);
-    }, { passive: true });
-
-    canvas.addEventListener('mousemove', (e) => {
-      moveBasket(e.clientX);
-    });
-
-    function startGameDay1() {
-      stopGame();
-      caughtCount = 0;
-      isGameOver = false;
-      gifts = [];
-      statusText.innerText = `Chyť 7 dárků! Splněno: 0 / ${TARGET_GIFTS}`;
-      gameLoop();
-    }
-
-    function stopGame() {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    }
-
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Náhodné generování dárků
-      if (Math.random() < 0.03 && !isGameOver) {
-        gifts.push({
-          x: Math.random() * (canvas.width - 24),
-          y: -20,
-          speed: 2 + Math.random() * 2,
-          char: ['🎁', '⭐', '🍬'][Math.floor(Math.random() * 3)]
-        });
-      }
-
-      // Kreslení saní/košíku
-      ctx.fillStyle = '#e03131';
-      ctx.fillRect(basketX, canvas.height - basketHeight - 10, basketWidth, basketHeight);
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px sans-serif';
-      ctx.fillText("SANĚ", basketX + 13, canvas.height - 12);
-
-      // Pohyb a kolize dárků
-      ctx.font = '20px sans-serif';
-      for (let i = gifts.length - 1; i >= 0; i--) {
-        const gift = gifts[i];
-        gift.y += gift.speed;
-        ctx.fillText(gift.char, gift.x, gift.y);
-
-        // Záchyt do košíku
-        const basketY = canvas.height - basketHeight - 10;
-        if (
-          gift.y >= basketY &&
-          gift.y <= basketY + basketHeight + 10 &&
-          gift.x + 20 >= basketX &&
-          gift.x <= basketX + basketWidth
-        ) {
-          gifts.splice(i, 1);
-          caughtCount++;
-          statusText.innerText = `Chyceno: ${caughtCount} / ${TARGET_GIFTS}`;
-
-          if (caughtCount >= TARGET_GIFTS && !isGameOver) {
-            isGameOver = true;
-            statusText.innerText = '🎉 Výborně! Den 1 je splněn!';
-            saveDayDone(1);
-          }
-          continue;
-        }
-
-        // Odstranění spadlých dárků mimo plátno
-        if (gift.y > canvas.height + 20) {
-          gifts.splice(i, 1);
-        }
-      }
-
-      if (!isGameOver) {
-        animationFrameId = requestAnimationFrame(gameLoop);
-      }
-    }
-
-    function saveDayDone(day) {
-      if (!completedDays.includes(day)) {
-        completedDays.push(day);
-        localStorage.setItem('advent_completed', JSON.stringify(completedDays));
-        setTimeout(() => location.reload(), 1500);
-      }
-    }
+    renderCalendar();
   </script>
 </body>
 </html>
