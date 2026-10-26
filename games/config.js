@@ -39,6 +39,11 @@ window.adventConfig = {
     title: "Sestřelování rampouchů",
     order: "desc",
     unit: " b."
+  },
+  9: {
+    title: "Zdobení stromečku",
+    order: "desc",
+    unit: " %"
   }
 
 };
